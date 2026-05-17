@@ -24,12 +24,13 @@ const metrics = [
 
 export default function EmotionSliders({ initialState, onSave, disabled = false, title = "Твоё состояние", lastUpdated }: EmotionSlidersProps) {
   const [state, setState] = useState(initialState || { mood: 5, stress: 5, energy: 5, sleep: 5 });
-  const isFirstRender = useRef(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevStateRef = useRef(initialState);
 
   useEffect(() => {
-    if (initialState) {
+    if (initialState && JSON.stringify(initialState) !== JSON.stringify(prevStateRef.current)) {
       setState(initialState);
+      prevStateRef.current = initialState;
     }
   }, [initialState]);
 

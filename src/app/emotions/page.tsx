@@ -113,7 +113,8 @@ export default function EmotionsPage() {
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      if (snapshot.empty) return;
+      // metadata.hasPendingWrites check to avoid processing our own deletions as changes
+      if (snapshot.empty || snapshot.metadata.hasPendingWrites) return;
 
       // Find the most recent signal from the added changes
       const additions = snapshot.docChanges()
@@ -123,14 +124,21 @@ export default function EmotionsPage() {
 
       if (additions.length > 0) {
         const latest = additions[0];
-        setIncomingHearts({ id: latest.id, count: latest.count });
 
-        // Delete the signal after processing to prevent replays
-        deleteDoc(doc(db, 'heart_signals', latest.id)).catch(console.error);
+        // Only trigger if it's a "fresh" signal (from the last 10 seconds)
+        // to avoid old signals stored in the database
+        const now = Date.now();
+        const signalTime = latest.timestamp?.toMillis() || now;
+        if (now - signalTime < 10000) {
+          setIncomingHearts({ id: latest.id, count: latest.count });
 
-        // Clear animation state after 3 seconds
-        const timer = setTimeout(() => setIncomingHearts(null), 3000);
-        return () => clearTimeout(timer);
+          // Delete the signal after processing to prevent replays
+          deleteDoc(doc(db, 'heart_signals', latest.id)).catch(console.error);
+
+          // Clear animation state after 3 seconds
+          const timer = setTimeout(() => setIncomingHearts(null), 3000);
+          return () => clearTimeout(timer);
+        }
       }
     }, (error) => {
       console.warn("Heart signals listener error:", error);
@@ -164,7 +172,7 @@ export default function EmotionsPage() {
   };
 
   const handleUpdateEmotions = async (emotions: any) => {
-    if (!user) return;
+    if (!user || JSON.stringify(emotions) === JSON.stringify(profile?.emotions)) return;
     try {
       const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
@@ -180,7 +188,7 @@ export default function EmotionsPage() {
   };
 
   const handleUpdateStatus = async (statusTag: any) => {
-    if (!user) return;
+    if (!user || JSON.stringify(statusTag) === JSON.stringify(profile?.statusTag)) return;
     try {
       const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
