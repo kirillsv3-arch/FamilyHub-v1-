@@ -12,7 +12,8 @@ import {
   Gift,
   UtensilsCrossed,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Settings
 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -58,14 +59,23 @@ export default function Dashboard() {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() => router.push('/settings')}
+            className="p-2 rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+            title="Настройки"
+          >
+            <Settings size={20} />
+          </button>
+          <button
             onClick={() => router.push('/profile')}
-            className="p-2 rounded-full bg-secondary text-secondary-foreground"
+            className="p-2 rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+            title="Профиль"
           >
             <UserIcon size={20} />
           </button>
           <button
             onClick={handleSignOut}
-            className="p-2 rounded-full bg-secondary text-secondary-foreground"
+            className="p-2 rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+            title="Выйти"
           >
             <LogOut size={20} />
           </button>
