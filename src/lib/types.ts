@@ -72,3 +72,64 @@ export interface ShoppingItem {
   priority: 'normal' | 'urgent';
   price?: number;
 }
+
+export interface WishlistItem {
+  id: string;
+  title: string;
+  price?: number;
+  isMaterial: boolean;
+  familyId: string;
+  ownerId: string; // The person whose wish it is
+  createdAt: any;
+  isCompleted: boolean;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  matrix: 'urgent-important' | 'urgent-unimportant' | 'unurgent-important' | 'unurgent-unimportant';
+  familyId: string;
+  createdBy: string;
+  completed: boolean;
+}
+
+export interface Transaction {
+  id: string;
+  amount: number;
+  type: 'income' | 'expense';
+  categoryId: string;
+  description: string;
+  date: any;
+  familyId: string;
+  userId: string;
+  userName: string;
+}
+
+export interface BudgetCategory {
+  id: string;
+  name: string;
+  icon: string;
+  limit?: number;
+  familyId: string;
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  wishlistId?: string; // Optional link to a wish
+  familyId: string;
+}
+
+export interface Loan {
+  id: string;
+  name: string;
+  type: 'consumer' | 'card';
+  totalAmount: number;
+  remainingAmount: number;
+  monthlyPayment: number;
+  paymentDate: number; // Day of month (1-31)
+  familyId: string;
+}
