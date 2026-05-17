@@ -35,14 +35,20 @@ export default function EmotionSliders({ initialState, onSave, disabled = false,
 
   const handleChange = (key: keyof typeof state, value: number) => {
     if (disabled) return;
-    const newState = { ...state, [key]: value };
-    setState(newState);
+    const newValue = value;
 
-    // Debounced save
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      onSave(newState);
-    }, 1500);
+    // Immediate local update for UI responsiveness
+    setState(prev => {
+      const newState = { ...prev, [key]: newValue };
+
+      // Debounced save of the WHOLE state
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        onSave(newState);
+      }, 2000); // 2 seconds as requested
+
+      return newState;
+    });
   };
 
   return (

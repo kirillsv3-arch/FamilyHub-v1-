@@ -39,10 +39,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let unsubscribeProfile: (() => void) | undefined;
 
-    if (user) {
+    if (user?.uid) {
       unsubscribeProfile = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
         if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
+          const newData = docSnap.data() as UserProfile;
+          setProfile(prev => {
+            // Only update if data actually changed to prevent cascading re-renders
+            if (JSON.stringify(prev) === JSON.stringify(newData)) return prev;
+            return newData;
+          });
         } else {
           setProfile(null);
         }
@@ -51,12 +56,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Error fetching profile:", error);
         setLoading(false);
       });
+    } else {
+      setProfile(null);
+      setLoading(false);
     }
 
     return () => {
       if (unsubscribeProfile) unsubscribeProfile();
     };
-  }, [user]);
+  }, [user?.uid]);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading }}>

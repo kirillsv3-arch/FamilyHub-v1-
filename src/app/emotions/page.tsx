@@ -36,15 +36,16 @@ export default function EmotionsPage() {
   const [incomingHearts, setIncomingHearts] = useState<{ id: string; count: number } | null>(null);
   const [isAtmosphereOpen, setIsAtmosphereOpen] = useState(false);
 
-  // Fetch partner data
+  // Fetch partner data - optimized to run once
   useEffect(() => {
     if (!profile?.familyId || !user) return;
+    let isMounted = true;
 
     const fetchPartner = async () => {
       // Use partnerId if explicitly set
       if (profile.partnerId) {
         const partnerDoc = await getDoc(doc(db, 'users', profile.partnerId));
-        if (partnerDoc.exists()) {
+        if (partnerDoc.exists() && isMounted) {
           setPartner({ uid: partnerDoc.id, ...partnerDoc.data() });
           return;
         }
@@ -56,49 +57,56 @@ export default function EmotionsPage() {
         where('familyId', '==', profile.familyId)
       );
       const querySnapshot = await getDocs(q);
+      if (!isMounted) return;
+
       const partnerDoc = querySnapshot.docs.find(d => d.id !== user.uid);
       if (partnerDoc) {
         setPartner({ uid: partnerDoc.id, ...partnerDoc.data() });
         // Implicitly set partnerId for the future to fix the logic
-        await setDoc(doc(db, 'users', user.uid), { partnerId: partnerDoc.id }, { merge: true });
+        // We do this without triggering an immediate re-fetch
+        setDoc(doc(db, 'users', user.uid), { partnerId: partnerDoc.id }, { merge: true });
       }
     };
 
     fetchPartner();
-  }, [profile?.familyId, profile?.partnerId, user]);
+    return () => { isMounted = false; };
+  }, [profile?.familyId, profile?.partnerId, user?.uid]); // Use user.uid instead of user object
 
   // Listen to heart stats
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
     const currentMonth = new Date().toISOString().slice(0, 7);
     const docId = period === 'all' ? 'total' : currentMonth;
 
     const unsub = onSnapshot(doc(db, 'users', user.uid, 'heart_stats', docId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setSentCount(data.sent || 0);
-        setReceivedCount(data.received || 0);
+        // Update only if values actually changed to prevent re-renders
+        setSentCount(prev => (prev !== data.sent ? (data.sent || 0) : prev));
+        setReceivedCount(prev => (prev !== data.received ? (data.received || 0) : prev));
       } else {
         setSentCount(0);
         setReceivedCount(0);
       }
+    }, (error) => {
+      console.warn("Heart stats listener error:", error);
     });
 
     return () => unsub();
-  }, [user, period]);
+  }, [user?.uid, period]);
 
-  // Listen for incoming heart signals
+  // Listen for incoming heart signals - optimized and safer
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
 
-    // To avoid composite index requirement, we remove orderBy on the server side
-    // and handle the latest signal logic on the client.
     const q = query(
       collection(db, 'heart_signals'),
       where('receiverId', '==', user.uid)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) return;
+
       // Find the most recent signal from the added changes
       const additions = snapshot.docChanges()
         .filter(change => change.type === 'added')
@@ -110,15 +118,18 @@ export default function EmotionsPage() {
         setIncomingHearts({ id: latest.id, count: latest.count });
 
         // Delete the signal after processing to prevent replays
-        deleteDoc(doc(db, 'heart_signals', latest.id));
+        deleteDoc(doc(db, 'heart_signals', latest.id)).catch(console.error);
 
         // Clear animation state after 3 seconds
-        setTimeout(() => setIncomingHearts(null), 3000);
+        const timer = setTimeout(() => setIncomingHearts(null), 3000);
+        return () => clearTimeout(timer);
       }
+    }, (error) => {
+      console.warn("Heart signals listener error:", error);
     });
 
     return () => unsub();
-  }, [user]);
+  }, [user?.uid]);
 
   const handleSendHearts = async (count: number) => {
     if (!user || !partner) return;
