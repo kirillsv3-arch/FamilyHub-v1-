@@ -45,6 +45,8 @@ import { cn } from '@/lib/utils';
 import { useLongPress } from 'use-long-press';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
+const UNITS = ['шт.', 'кг', 'л', 'упак.', 'г', 'мл'] as const;
+
 function PriceChart({ itemName, familyId }: { itemName: string, familyId: string }) {
   const [history, setHistory] = useState<any[]>([]);
 
@@ -71,7 +73,7 @@ function PriceChart({ itemName, familyId }: { itemName: string, familyId: string
     return () => unsubscribe();
   }, [itemName, familyId]);
 
-  const avgPrice = history.length > 0 ? (history.reduce((sum, item) => sum + item.price, 0) / history.length).toFixed(2) : 0;
+  const avgPrice = history.length > 0 ? (history.reduce((sum, item) => sum + parseFloat(item.price || 0), 0) / history.length).toFixed(2) : 0;
 
   if (history.length < 2) return (
     <div className="text-center py-4">
@@ -94,10 +96,12 @@ function PriceChart({ itemName, familyId }: { itemName: string, familyId: string
           <XAxis dataKey="date" fontSize={10} tick={{fill: '#666'}} axisLine={false} tickLine={false} />
           <YAxis fontSize={10} tick={{fill: '#666'}} axisLine={false} tickLine={false} width={25} />
           <Tooltip
-            contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '8px', fontSize: '12px' }}
+            formatter={(value: any) => [`${value} ₽`, 'Цена']}
+            labelStyle={{ color: '#888' }}
+            contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}
             itemStyle={{ color: '#3b82f6' }}
           />
-          <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={{r: 3, fill: '#3b82f6'}} activeDot={{r: 5}} />
+          <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={{r: 4, fill: '#3b82f6', stroke: '#0a0a0a', strokeWidth: 2}} activeDot={{r: 6}} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -127,11 +131,12 @@ export default function ShoppingListPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null);
   const [pricingItem, setPricingItem] = useState<ShoppingItem | null>(null);
-  const [newItem, setNewItem] = useState<{title: string, shopId: string, priority: 'normal' | 'urgent', sku: string, link: string}>({
+  const [newItem, setNewItem] = useState<{title: string, shopId: string, priority: 'normal' | 'urgent', quantity: string, unit: typeof UNITS[number], link: string}>({
     title: '',
     shopId: 'other',
     priority: 'normal',
-    sku: '',
+    quantity: '1',
+    unit: 'шт.',
     link: ''
   });
   const [itemPrice, setItemPrice] = useState('');
@@ -196,11 +201,12 @@ export default function ShoppingListPage() {
         createdAt: serverTimestamp(),
         shopId: newItem.shopId,
         priority: newItem.priority,
-        sku: newItem.shopId === 'market' ? newItem.sku : '',
+        quantity: parseFloat(newItem.quantity) || 1,
+        unit: newItem.unit,
         link: newItem.shopId === 'market' ? newItem.link : '',
         isOrdered: false
       });
-      setNewItem({ title: '', shopId: activeTab === 'plan' || activeTab === 'other' ? 'other' : activeTab, priority: 'normal', sku: '', link: '' });
+      setNewItem({ title: '', shopId: activeTab === 'plan' || activeTab === 'other' ? 'other' : activeTab, priority: 'normal', quantity: '1', unit: 'шт.', link: '' });
       setIsAdding(false);
     } catch (err) {
       console.error("Error adding item:", err);
@@ -248,6 +254,18 @@ export default function ShoppingListPage() {
         userId: user?.uid
       });
 
+      // Budget Sync: Automatically create an expense transaction
+      await addDoc(collection(db, 'transactions'), {
+        amount: price,
+        type: 'expense',
+        categoryId: 'food', // Default category for shopping list items
+        description: `Покупка: ${pricingItem.title}`,
+        date: serverTimestamp(),
+        familyId: profile?.familyId,
+        userId: user?.uid,
+        userName: profile?.name
+      });
+
       setPricingItem(null);
       setItemPrice('');
     } catch (err) {
@@ -273,7 +291,8 @@ export default function ShoppingListPage() {
         title: editingItem.title.trim(),
         shopId: editingItem.shopId,
         priority: editingItem.priority,
-        sku: editingItem.shopId === 'market' ? editingItem.sku : '',
+        quantity: editingItem.quantity,
+        unit: editingItem.unit,
         link: editingItem.shopId === 'market' ? editingItem.link : '',
       });
       setEditingItem(null);
@@ -369,10 +388,10 @@ export default function ShoppingListPage() {
             <h1 className="text-xl font-bold">Список</h1>
           </div>
           <div className="flex gap-2">
-            {activeTab !== 'plan' && items.filter(i => i.shopId === activeTab && i.completed).length > 0 && (
+            {activeTab === 'plan' && items.filter(i => i.completed).length > 0 && (
               <button
                 onClick={async () => {
-                  const toDelete = items.filter(i => i.shopId === activeTab && i.completed);
+                  const toDelete = items.filter(i => i.completed);
                   for (const item of toDelete) {
                     await deleteDoc(doc(db, 'shoppingList', item.id));
                   }
@@ -490,13 +509,14 @@ export default function ShoppingListPage() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className={cn(
-                      "font-bold text-lg leading-tight truncate",
-                      item.completed ? 'line-through text-muted-foreground' : ''
-                    )}>
+                  <div className={cn("flex items-center gap-2", item.completed ? "line-through text-muted-foreground" : "")}>
+                    <p className="font-bold text-lg leading-tight truncate">
                       {item.title}
                     </p>
+                    <span className="text-sm opacity-60">
+                      {item.quantity} {item.unit}
+                    </span>
+                    {item.price && <span className="text-sm font-black text-primary">{item.price} ₽</span>}
                     {item.priority === 'urgent' && !item.completed && (
                       <span className="flex-shrink-0 w-2 h-2 rounded-full bg-destructive animate-pulse" />
                     )}
@@ -513,9 +533,6 @@ export default function ShoppingListPage() {
                         {itemShop.emoji} {itemShop.name}
                       </span>
                     </div>
-                  )}
-                  {item.sku && (
-                     <p className="text-[10px] text-muted-foreground mt-1 font-mono uppercase">SKU: {item.sku}</p>
                   )}
                 </div>
 
@@ -619,28 +636,38 @@ export default function ShoppingListPage() {
                   </button>
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Кол-во</p>
+                    <input
+                      type="number"
+                      value={newItem.quantity}
+                      onChange={(e) => setNewItem({...newItem, quantity: e.target.value})}
+                      className="w-full p-4 rounded-xl bg-background border border-border font-bold"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ед. изм.</p>
+                    <select
+                      value={newItem.unit}
+                      onChange={(e) => setNewItem({...newItem, unit: e.target.value as any})}
+                      className="w-full p-4 rounded-xl bg-background border border-border font-bold appearance-none"
+                    >
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+
                 {newItem.shopId === 'market' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Артикул (SKU)</p>
-                       <input
-                        type="text"
-                        value={newItem.sku}
-                        onChange={(e) => setNewItem({...newItem, sku: e.target.value})}
-                        placeholder="000000"
-                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
-                       <input
-                        type="text"
-                        value={newItem.link}
-                        onChange={(e) => setNewItem({...newItem, link: e.target.value})}
-                        placeholder="https://..."
-                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
-                       />
-                    </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
+                    <input
+                      type="text"
+                      value={newItem.link}
+                      onChange={(e) => setNewItem({...newItem, link: e.target.value})}
+                      placeholder="https://..."
+                      className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
+                    />
                   </div>
                 )}
 
@@ -738,28 +765,38 @@ export default function ShoppingListPage() {
                   </button>
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Кол-во</p>
+                    <input
+                      type="number"
+                      value={editingItem.quantity || ''}
+                      onChange={(e) => setEditingItem({...editingItem, quantity: parseFloat(e.target.value)})}
+                      className="w-full p-4 rounded-xl bg-background border border-border font-bold"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ед. изм.</p>
+                    <select
+                      value={editingItem.unit || 'шт.'}
+                      onChange={(e) => setEditingItem({...editingItem, unit: e.target.value as any})}
+                      className="w-full p-4 rounded-xl bg-background border border-border font-bold appearance-none"
+                    >
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+
                 {editingItem.shopId === 'market' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Артикул (SKU)</p>
-                       <input
-                        type="text"
-                        value={editingItem.sku || ''}
-                        onChange={(e) => setEditingItem({...editingItem, sku: e.target.value})}
-                        placeholder="000000"
-                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
-                       <input
-                        type="text"
-                        value={editingItem.link || ''}
-                        onChange={(e) => setEditingItem({...editingItem, link: e.target.value})}
-                        placeholder="https://..."
-                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
-                       />
-                    </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
+                    <input
+                      type="text"
+                      value={editingItem.link || ''}
+                      onChange={(e) => setEditingItem({...editingItem, link: e.target.value})}
+                      placeholder="https://..."
+                      className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
+                    />
                   </div>
                 )}
 

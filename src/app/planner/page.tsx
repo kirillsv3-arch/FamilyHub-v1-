@@ -11,10 +11,11 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  serverTimestamp
+  serverTimestamp,
+  getDocs
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Task } from '@/lib/types';
+import { Task, UserProfile, RecurringTemplate, CalendarEvent } from '@/lib/types';
 import Link from 'next/link';
 import {
   ChevronLeft,
@@ -69,8 +70,13 @@ export default function PlannerPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<UserProfile[]>([]);
+  const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
+  const [personalEvents, setPersonalEvents] = useState<CalendarEvent[]>([]);
   const [isAdding, setIsAdding] = useState(false);
-  const [newTask, setNewTask] = useState({ title: '', matrix: 'urgent-important' as Task['matrix'] });
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', matrix: 'urgent-important' as Task['matrix'], assigneeId: '' });
+  const [newEvent, setNewEvent] = useState({ title: '' });
 
   useEffect(() => {
     if (!profile?.familyId) return;
@@ -88,7 +94,23 @@ export default function PlannerPage() {
       setTasks(taskList);
     });
 
-    return () => unsubscribe();
+    getDocs(query(collection(db, 'users'), where('familyId', '==', profile.familyId))).then(snap => {
+      setFamilyMembers(snap.docs.map(d => d.data() as UserProfile));
+    });
+
+    const unsubTempl = onSnapshot(query(collection(db, 'recurringTemplates'), where('familyId', '==', profile.familyId)), (snap) => {
+      setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() } as RecurringTemplate)));
+    });
+
+    const unsubEvents = onSnapshot(query(collection(db, 'calendarEvents'), where('familyId', '==', profile.familyId)), (snap) => {
+      setPersonalEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
+    });
+
+    return () => {
+      unsubscribe();
+      unsubTempl();
+      unsubEvents();
+    };
   }, [profile?.familyId]);
 
   const handleAddTask = async (e: React.FormEvent) => {
@@ -102,14 +124,29 @@ export default function PlannerPage() {
         matrix: newTask.matrix,
         familyId: profile.familyId,
         createdBy: user.uid,
+        assigneeId: newTask.assigneeId || user.uid,
         completed: false,
         createdAt: serverTimestamp()
       });
-      setNewTask({ title: '', matrix: 'urgent-important' });
+      setNewTask({ title: '', matrix: 'urgent-important', assigneeId: '' });
       setIsAdding(false);
     } catch (err) {
       console.error("Error adding task:", err);
     }
+  };
+
+  const handleAddEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEvent.title.trim() || !user || !profile?.familyId) return;
+    await addDoc(collection(db, 'calendarEvents'), {
+      title: newEvent.title.trim(),
+      date: format(selectedDate, 'yyyy-MM-dd'),
+      type: 'personal',
+      familyId: profile.familyId,
+      userId: user.uid
+    });
+    setNewEvent({ title: '' });
+    setIsAddingEvent(false);
   };
 
   const renderHeader = () => (
@@ -162,6 +199,10 @@ export default function PlannerPage() {
           const dayTasks = tasks.filter(t => t.date === formattedDate);
           const isSel = isSameDay(day, selectedDate);
           const isCurrMonth = isSameMonth(day, monthStart);
+          const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+          const birthMembers = familyMembers.filter(m => m.dob && format(new Date(m.dob), 'MM-dd') === format(day, 'MM-dd'));
+          const dayEvents = personalEvents.filter(e => e.date === formattedDate);
+          const dayTemplates = templates.filter(t => t.dayOfMonth === parseInt(format(day, 'd')));
 
           return (
             <button
@@ -171,28 +212,25 @@ export default function PlannerPage() {
                 "relative aspect-square flex flex-col items-center justify-center rounded-2xl transition-all border",
                 isSel ? "bg-primary border-transparent text-white shadow-lg shadow-primary/20 scale-105 z-10" : "bg-card border-border",
                 !isCurrMonth && !isSel ? "opacity-30 border-transparent" : "",
-                dayHolidays ? "border-red-500/50" : ""
+                dayHolidays ? "bg-red-500/10 border-red-500/30" : "",
+                isWeekend && !dayHolidays && !isSel ? "bg-secondary/30" : ""
               )}
             >
               <span className={cn(
                 "text-sm font-bold",
-                dayHolidays && !isSel ? "text-red-500" : ""
+                dayHolidays && !isSel ? "text-red-500" : "",
+                isWeekend && !dayHolidays && !isSel ? "text-muted-foreground" : ""
               )}>
                 {format(day, 'd')}
               </span>
 
-              {/* Task Dots */}
-              <div className="flex gap-0.5 mt-1">
+              <div className="flex flex-wrap justify-center gap-0.5 mt-1 max-w-[80%]">
                 {dayTasks.slice(0, 3).map(task => (
-                  <div
-                    key={task.id}
-                    className={cn(
-                      "w-1 h-1 rounded-full",
-                      isSel ? "bg-white" : MATRIX_CONFIG[task.matrix].color
-                    )}
-                  />
+                  <div key={task.id} className={cn("w-1 h-1 rounded-full", isSel ? "bg-white" : MATRIX_CONFIG[task.matrix].color)} />
                 ))}
-                {dayTasks.length > 3 && <div className={cn("w-1 h-1 rounded-full", isSel ? "bg-white" : "bg-muted-foreground")} />}
+                {dayEvents.map(e => <div key={e.id} className="w-1 h-1 rounded-full bg-pink-500" />)}
+                {birthMembers.map(m => <div key={m.uid} className="w-1 h-1 rounded-full bg-yellow-400" />)}
+                {dayTemplates.map(t => <div key={t.id} className={cn("w-1 h-1 rounded-full", t.type === 'income' ? "bg-green-500" : "bg-red-500")} />)}
               </div>
 
               {isToday(day) && !isSel && (
@@ -206,14 +244,21 @@ export default function PlannerPage() {
   };
 
   const renderMatrix = () => {
-    const selectedDateTasks = tasks.filter(t => t.date === format(selectedDate, 'yyyy-MM-dd'));
+    const dStr = format(selectedDate, 'yyyy-MM-dd');
+    const selectedDateTasks = tasks.filter(t => t.date === dStr);
+    const birthMembers = familyMembers.filter(m => m.dob && format(new Date(m.dob), 'MM-dd') === format(selectedDate, 'MM-dd'));
+    const dayEvents = personalEvents.filter(e => e.date === dStr);
+    const dayHolidays = HOLIDAYS[format(selectedDate, 'MM-dd')];
 
     return (
-      <div className="mt-8 space-y-6">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-black">
-            {isToday(selectedDate) ? "Сегодня" : format(selectedDate, 'd MMMM', { locale: ru })}
-          </h2>
+          <div>
+            <h2 className="text-xl font-black">
+              {isToday(selectedDate) ? "Сегодня" : format(selectedDate, 'd MMMM', { locale: ru })}
+            </h2>
+            {dayHolidays && <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">{dayHolidays}</p>}
+          </div>
           <button
             onClick={() => setIsAdding(true)}
             className="p-2 bg-primary text-white rounded-xl active:scale-95 transition-all shadow-lg shadow-primary/20"
@@ -221,6 +266,31 @@ export default function PlannerPage() {
             <Plus size={20} />
           </button>
         </div>
+
+        {birthMembers.length > 0 && (
+           <div className="flex gap-2">
+              {birthMembers.map(m => (
+                <div key={m.uid} className="bg-yellow-400/10 border border-yellow-400/30 p-3 rounded-2xl flex items-center gap-2">
+                   <span className="text-lg">🎂</span>
+                   <span className="text-xs font-bold">День рождения: {m.name}</span>
+                </div>
+              ))}
+           </div>
+        )}
+
+        {dayEvents.length > 0 && (
+           <div className="space-y-2">
+              {dayEvents.map(e => (
+                 <div key={e.id} className="bg-pink-500/10 border border-pink-500/30 p-4 rounded-2xl flex justify-between items-center group">
+                    <div className="flex items-center gap-3">
+                       <div className="w-2 h-2 rounded-full bg-pink-500" />
+                       <span className="font-bold text-sm">{e.title}</span>
+                    </div>
+                    <button onClick={() => deleteDoc(doc(db, 'calendarEvents', e.id))} className="opacity-0 group-hover:opacity-40"><Trash2 size={14}/></button>
+                 </div>
+              ))}
+           </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4">
           {(Object.entries(MATRIX_CONFIG) as [Task['matrix'], typeof MATRIX_CONFIG['urgent-important']][]).map(([key, config]) => {
@@ -232,26 +302,32 @@ export default function PlannerPage() {
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{config.name}</span>
                 </div>
                 <div className="space-y-2">
-                  {matrixTasks.map(task => (
-                    <div
-                      key={task.id}
-                      className="group flex items-center gap-3 p-4 bg-card border border-border rounded-2xl shadow-sm"
-                    >
-                      <button
-                        onClick={() => updateDoc(doc(db, 'planner', task.id), { completed: !task.completed })}
-                        className={cn("transition-colors", task.completed ? "text-primary" : "text-muted-foreground")}
+                  {matrixTasks.map(task => {
+                    const assignee = familyMembers.find(m => m.uid === task.assigneeId);
+                    return (
+                      <div
+                        key={task.id}
+                        className="group flex items-center gap-3 p-4 bg-card border border-border rounded-2xl shadow-sm"
                       >
-                        {task.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                      </button>
-                      <span className={cn("flex-1 font-bold", task.completed ? "line-through opacity-40" : "")}>{task.title}</span>
-                      <button
-                        onClick={() => deleteDoc(doc(db, 'planner', task.id))}
-                        className="opacity-0 group-hover:opacity-100 p-2 text-muted-foreground hover:text-destructive transition-all"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          onClick={() => updateDoc(doc(db, 'planner', task.id), { completed: !task.completed })}
+                          className={cn("transition-colors", task.completed ? "text-primary" : "text-muted-foreground")}
+                        >
+                          {task.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className={cn("font-bold truncate", task.completed ? "line-through opacity-40" : "")}>{task.title}</p>
+                          {assignee && <p className="text-[8px] font-black uppercase text-muted-foreground">Исполнитель: {assignee.name}</p>}
+                        </div>
+                        <button
+                          onClick={() => deleteDoc(doc(db, 'planner', task.id))}
+                          className="opacity-0 group-hover:opacity-100 p-2 text-muted-foreground hover:text-destructive transition-all"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    );
+                  })}
                   {matrixTasks.length === 0 && (
                     <div className="p-4 border border-dashed border-border rounded-2xl text-center text-xs text-muted-foreground italic opacity-50">
                       Нет задач
@@ -267,13 +343,21 @@ export default function PlannerPage() {
   };
 
   return (
-    <main className="min-h-screen bg-background p-4 pb-24">
+    <main className="min-h-screen bg-background p-4 pb-24 flex flex-col">
       {renderHeader()}
-      <div className="bg-card/50 border border-border p-4 rounded-[32px] shadow-sm">
-        {renderDays()}
-        {renderCells()}
+
+      <div className="flex-1 overflow-y-auto no-scrollbar">
+        {renderMatrix()}
+
+        <div className="mt-12 bg-card/50 border border-border p-4 rounded-[32px] shadow-sm">
+          <div className="flex justify-between items-center mb-4 px-2">
+             <h3 className="text-xs font-black text-muted-foreground uppercase tracking-widest">Календарь</h3>
+             <button onClick={() => setIsAddingEvent(true)} className="text-[10px] font-black text-primary uppercase">Добавить событие</button>
+          </div>
+          {renderDays()}
+          {renderCells()}
+        </div>
       </div>
-      {renderMatrix()}
 
       {/* Add Task Modal */}
       <AnimatePresence>
@@ -301,6 +385,15 @@ export default function PlannerPage() {
                 />
 
                 <div className="space-y-3">
+                   <p className="text-sm font-black text-muted-foreground uppercase tracking-widest ml-1">Исполнитель</p>
+                   <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                      {familyMembers.map(m => (
+                        <button key={m.uid} type="button" onClick={() => setNewTask({...newTask, assigneeId: m.uid})} className={cn("px-4 py-2 rounded-xl text-xs font-bold border whitespace-nowrap", newTask.assigneeId === m.uid ? "bg-primary text-white border-transparent" : "bg-background border-border text-muted-foreground")}>{m.name}</button>
+                      ))}
+                   </div>
+                </div>
+
+                <div className="space-y-3">
                   <p className="text-sm font-black text-muted-foreground uppercase tracking-widest ml-1">Приоритет (Матрица Эйзенхауэра)</p>
                   <div className="grid grid-cols-2 gap-2">
                     {(Object.entries(MATRIX_CONFIG) as [Task['matrix'], typeof MATRIX_CONFIG['urgent-important']][]).map(([key, config]) => (
@@ -326,6 +419,23 @@ export default function PlannerPage() {
                 >
                   Запланировать на {format(selectedDate, 'd MMMM', { locale: ru })}
                 </button>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Add Event Modal */}
+      <AnimatePresence>
+        {isAddingEvent && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddingEvent(false)} className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-[40px] p-8 border-t border-border">
+              <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-8" />
+              <h2 className="text-2xl font-black mb-6">Новое событие</h2>
+              <form onSubmit={handleAddEvent} className="space-y-6">
+                <input autoFocus type="text" value={newEvent.title} onChange={(e) => setNewEvent({title: e.target.value})} placeholder="Название события" className="w-full p-5 rounded-2xl bg-background border border-border text-xl font-bold" />
+                <button type="submit" className="w-full p-5 bg-pink-500 text-white rounded-2xl font-black text-lg shadow-xl shadow-pink-500/20">Добавить в календарь</button>
               </form>
             </motion.div>
           </>

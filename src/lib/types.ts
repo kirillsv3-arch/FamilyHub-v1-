@@ -71,9 +71,10 @@ export interface ShoppingItem {
   shopId: string;
   priority: 'normal' | 'urgent';
   price?: number;
-  sku?: string;
   link?: string;
   isOrdered?: boolean;
+  quantity?: number;
+  unit?: 'шт.' | 'кг' | 'л' | 'упак.' | 'г' | 'мл';
 }
 
 export interface WishlistItem {
@@ -94,6 +95,7 @@ export interface Task {
   matrix: 'urgent-important' | 'urgent-unimportant' | 'unurgent-important' | 'unurgent-unimportant';
   familyId: string;
   createdBy: string;
+  assigneeId?: string;
   completed: boolean;
 }
 
@@ -102,11 +104,13 @@ export interface Transaction {
   amount: number;
   type: 'income' | 'expense';
   categoryId: string;
+  subcategoryId?: string;
   description: string;
   date: any;
   familyId: string;
   userId: string;
   userName: string;
+  isRecurring?: boolean;
 }
 
 export interface BudgetCategory {
@@ -115,6 +119,7 @@ export interface BudgetCategory {
   icon: string;
   limit?: number;
   familyId: string;
+  subcategories?: { id: string, name: string }[];
 }
 
 export interface SavingsGoal {
@@ -134,5 +139,27 @@ export interface Loan {
   remainingAmount: number;
   monthlyPayment: number;
   paymentDate: number; // Day of month (1-31)
+  interestRate?: number;
+  paymentType?: 'annuity' | 'differentiated';
+  startDate?: any;
+  familyId: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  type: 'personal' | 'holiday' | 'birthday';
+  familyId: string;
+  userId?: string;
+}
+
+export interface RecurringTemplate {
+  id: string;
+  title: string;
+  amount: number;
+  type: 'income' | 'expense';
+  categoryId: string;
+  dayOfMonth: number;
   familyId: string;
 }
