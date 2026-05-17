@@ -36,41 +36,49 @@ export default function EmotionsPage() {
   const [incomingHearts, setIncomingHearts] = useState<{ id: string; count: number } | null>(null);
   const [isAtmosphereOpen, setIsAtmosphereOpen] = useState(false);
 
-  // Fetch partner data - optimized to run once
+  // Real-time partner data listener
   useEffect(() => {
-    if (!profile?.familyId || !user) return;
-    let isMounted = true;
+    if (!profile?.familyId || !user?.uid) return;
 
-    const fetchPartner = async () => {
-      // Use partnerId if explicitly set
-      if (profile.partnerId) {
-        const partnerDoc = await getDoc(doc(db, 'users', profile.partnerId));
-        if (partnerDoc.exists() && isMounted) {
-          setPartner({ uid: partnerDoc.id, ...partnerDoc.data() });
-          return;
+    let unsubscribePartner: () => void;
+
+    const setupPartnerListener = async () => {
+      let partnerUid = profile.partnerId;
+
+      // If no partnerId, find the first other family member (One-time check, no direct setDoc here to avoid loops)
+      if (!partnerUid) {
+        const q = query(
+          collection(db, 'users'),
+          where('familyId', '==', profile.familyId)
+        );
+        const querySnapshot = await getDocs(q);
+        const partnerDoc = querySnapshot.docs.find(d => d.id !== user.uid);
+        if (partnerDoc) {
+          partnerUid = partnerDoc.id;
+          // We don't call setDoc here because profile update triggers this effect again.
+          // Instead, we just use the ID for the listener.
         }
       }
 
-      // Fallback: search for partner in the family if not set yet
-      const q = query(
-        collection(db, 'users'),
-        where('familyId', '==', profile.familyId)
-      );
-      const querySnapshot = await getDocs(q);
-      if (!isMounted) return;
-
-      const partnerDoc = querySnapshot.docs.find(d => d.id !== user.uid);
-      if (partnerDoc) {
-        setPartner({ uid: partnerDoc.id, ...partnerDoc.data() });
-        // Implicitly set partnerId for the future to fix the logic
-        // We do this without triggering an immediate re-fetch
-        setDoc(doc(db, 'users', user.uid), { partnerId: partnerDoc.id }, { merge: true });
+      if (partnerUid) {
+        unsubscribePartner = onSnapshot(doc(db, 'users', partnerUid), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setPartner((prev: any) => {
+              const newData = { uid: docSnap.id, ...data };
+              if (JSON.stringify(prev) === JSON.stringify(newData)) return prev;
+              return newData;
+            });
+          }
+        }, (error) => console.warn("Partner listener error:", error));
       }
     };
 
-    fetchPartner();
-    return () => { isMounted = false; };
-  }, [profile?.familyId, profile?.partnerId, user?.uid]); // Use user.uid instead of user object
+    setupPartnerListener();
+    return () => {
+      if (unsubscribePartner) unsubscribePartner();
+    };
+  }, [profile?.familyId, profile?.partnerId, user?.uid]);
 
   // Listen to heart stats
   useEffect(() => {
@@ -267,14 +275,25 @@ export default function EmotionsPage() {
         </div>
 
         {/* 5. Partner State */}
-        {partner && (
-          <EmotionSliders
-            title={`Статус ${partner.name}`}
-            initialState={partner.emotions}
-            onSave={() => {}}
-            disabled={true}
-            lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
-          />
+        {partner ? (
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 px-1">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Партнер на связи</span>
+            </div>
+            <EmotionSliders
+              title={`Статус ${partner.name}`}
+              initialState={partner.emotions}
+              onSave={() => {}}
+              disabled={true}
+              lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
+            />
+          </div>
+        ) : (
+          <div className="p-8 border border-dashed border-border rounded-2xl flex flex-col items-center justify-center text-center space-y-2 opacity-50">
+            <Info size={24} className="text-muted-foreground" />
+            <p className="text-sm font-medium">Партнер еще не подключен или не установил статус</p>
+          </div>
         )}
       </div>
 

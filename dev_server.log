@@ -13,3 +13,4 @@
  GET /emotions 200 in 780ms (next.js: 214ms, application-code: 566ms)
  GET /emotions 200 in 92ms (next.js: 8ms, application-code: 84ms)
  GET /emotions 200 in 2.1s (next.js: 901ms, application-code: 1221ms)
+ GET /emotions 200 in 1008ms (next.js: 195ms, application-code: 813ms)
