@@ -146,7 +146,7 @@ export default function EmotionsPage() {
     setSentCount(prev => prev + count);
 
     try {
-      await fetch('/api/emotions/send-hearts', {
+      const response = await fetch('/api/emotions/send-hearts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -155,6 +155,9 @@ export default function EmotionsPage() {
           count
         })
       });
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to send hearts:', error);
     }
@@ -163,11 +166,14 @@ export default function EmotionsPage() {
   const handleUpdateEmotions = async (emotions: any) => {
     if (!user) return;
     try {
-      await fetch('/api/emotions/update-state', {
+      const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.uid, emotions })
       });
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to update emotions:', error);
     }
@@ -176,11 +182,14 @@ export default function EmotionsPage() {
   const handleUpdateStatus = async (statusTag: any) => {
     if (!user) return;
     try {
-      await fetch('/api/emotions/update-state', {
+      const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.uid, statusTag })
       });
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to update status:', error);
     }
