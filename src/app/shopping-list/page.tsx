@@ -36,10 +36,13 @@ import {
   PlusCircle,
   Clock,
   Navigation,
-  Bell
+  Bell,
+  ExternalLink,
+  Barcode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { useLongPress } from 'use-long-press';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 function PriceChart({ itemName, familyId }: { itemName: string, familyId: string }) {
@@ -103,8 +106,8 @@ function PriceChart({ itemName, familyId }: { itemName: string, familyId: string
 
 const SHOPS = [
   { id: 'other', name: 'Другое', emoji: '✨', color: 'bg-zinc-500', text: 'text-zinc-500' },
-  { id: 'lenta', name: 'Лента', emoji: '🌻', color: 'bg-blue-600', text: 'text-blue-600' },
-  { id: 'magnit', name: 'Магнит', emoji: '🔴', color: 'bg-red-600', text: 'text-red-600' },
+  { id: 'lenta', name: 'Лента', emoji: '🌻', color: 'bg-[#004a99]', text: 'text-[#004a99]' },
+  { id: 'magnit', name: 'Магнит', emoji: '🔴', color: 'bg-[#e30613]', text: 'text-[#e30613]' },
   { id: 'samokat', name: 'Самокат', emoji: '🚲', color: 'bg-pink-500', text: 'text-pink-500' },
   { id: 'lavka', name: 'Я.Лавка', emoji: '🍋', color: 'bg-yellow-400', text: 'text-yellow-400' },
   { id: 'apteka', name: 'Аптека', emoji: '💊', color: 'bg-teal-500', text: 'text-teal-500' },
@@ -124,7 +127,13 @@ export default function ShoppingListPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null);
   const [pricingItem, setPricingItem] = useState<ShoppingItem | null>(null);
-  const [newItem, setNewItem] = useState<{title: string, shopId: string, priority: 'normal' | 'urgent'}>({ title: '', shopId: 'other', priority: 'normal' });
+  const [newItem, setNewItem] = useState<{title: string, shopId: string, priority: 'normal' | 'urgent', sku: string, link: string}>({
+    title: '',
+    shopId: 'other',
+    priority: 'normal',
+    sku: '',
+    link: ''
+  });
   const [itemPrice, setItemPrice] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
@@ -186,9 +195,12 @@ export default function ShoppingListPage() {
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         shopId: newItem.shopId,
-        priority: newItem.priority
+        priority: newItem.priority,
+        sku: newItem.shopId === 'market' ? newItem.sku : '',
+        link: newItem.shopId === 'market' ? newItem.link : '',
+        isOrdered: false
       });
-      setNewItem({ title: '', shopId: activeTab === 'plan' || activeTab === 'other' ? 'other' : activeTab, priority: 'normal' });
+      setNewItem({ title: '', shopId: activeTab === 'plan' || activeTab === 'other' ? 'other' : activeTab, priority: 'normal', sku: '', link: '' });
       setIsAdding(false);
     } catch (err) {
       console.error("Error adding item:", err);
@@ -201,10 +213,11 @@ export default function ShoppingListPage() {
       const newStatus = !item.completed;
 
       await updateDoc(itemRef, {
-        completed: newStatus
+        completed: newStatus,
+        isOrdered: item.shopId === 'market' ? newStatus : false
       });
 
-      if (newStatus) {
+      if (newStatus && item.shopId !== 'market') {
         setPricingItem(item);
         setItemPrice('');
       }
@@ -259,7 +272,9 @@ export default function ShoppingListPage() {
       await updateDoc(itemRef, {
         title: editingItem.title.trim(),
         shopId: editingItem.shopId,
-        priority: editingItem.priority
+        priority: editingItem.priority,
+        sku: editingItem.shopId === 'market' ? editingItem.sku : '',
+        link: editingItem.shopId === 'market' ? editingItem.link : '',
       });
       setEditingItem(null);
     } catch (err) {
@@ -272,6 +287,28 @@ export default function ShoppingListPage() {
     : items.filter(item => item.shopId === activeTab);
 
   const activeShop = TABS.find(s => s.id === activeTab);
+
+  const bindLongPress = useLongPress((event, { context }: { context?: any }) => {
+    if (activeTab === 'plan' && context) {
+      triggerVibrate([50, 30, 50]);
+      handleDeleteItem(context.id);
+    }
+  }, {
+    threshold: 600,
+    captureEvent: true,
+    cancelOnMovement: true,
+  });
+
+  const triggerVibrate = (pattern: number | number[] = 50) => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(pattern);
+    }
+  };
+
+  const handleTabChange = (id: string) => {
+    setActiveTab(id);
+    triggerVibrate(30);
+  };
 
   const toggleInShop = async () => {
     if (!user || !profile?.familyId || activeTab === 'plan') return;
@@ -367,7 +404,7 @@ export default function ShoppingListPage() {
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
               className={cn(
                 "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all",
                 activeTab === tab.id
@@ -419,13 +456,17 @@ export default function ShoppingListPage() {
               <motion.div
                 layout
                 key={item.id}
+                {...bindLongPress(item)}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.2 }}
                 onClick={() => {
                   if (activeTab === 'plan') setEditingItem(item);
-                  else toggleComplete(item);
+                  else {
+                    triggerVibrate(40);
+                    toggleComplete(item);
+                  }
                 }}
                 className={cn(
                   "flex items-center p-4 rounded-3xl border transition-all cursor-pointer select-none",
@@ -459,6 +500,12 @@ export default function ShoppingListPage() {
                     {item.priority === 'urgent' && !item.completed && (
                       <span className="flex-shrink-0 w-2 h-2 rounded-full bg-destructive animate-pulse" />
                     )}
+                    {item.isOrdered && activeTab === 'market' && (
+                       <span className="text-[8px] font-black uppercase bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded">Заказано</span>
+                    )}
+                    {usersInShop.some(([uid, d]) => d.shopId === item.shopId) && (
+                       <div className="w-2 h-2 rounded-full bg-primary animate-pulse" title="Кто-то в этом магазине" />
+                    )}
                   </div>
                   {activeTab === 'plan' && itemShop && (
                     <div className="flex items-center gap-2 mt-1">
@@ -467,7 +514,19 @@ export default function ShoppingListPage() {
                       </span>
                     </div>
                   )}
+                  {item.sku && (
+                     <p className="text-[10px] text-muted-foreground mt-1 font-mono uppercase">SKU: {item.sku}</p>
+                  )}
                 </div>
+
+                {activeTab === 'market' && item.link && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); window.open(item.link, '_blank'); }}
+                    className="p-2 text-primary"
+                  >
+                    <ExternalLink size={20} />
+                  </button>
+                )}
 
                 {activeTab === 'plan' && (
                   <button
@@ -559,6 +618,31 @@ export default function ShoppingListPage() {
                     Срочно
                   </button>
                 </div>
+
+                {newItem.shopId === 'market' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Артикул (SKU)</p>
+                       <input
+                        type="text"
+                        value={newItem.sku}
+                        onChange={(e) => setNewItem({...newItem, sku: e.target.value})}
+                        placeholder="000000"
+                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
+                       />
+                    </div>
+                    <div className="space-y-2">
+                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
+                       <input
+                        type="text"
+                        value={newItem.link}
+                        onChange={(e) => setNewItem({...newItem, link: e.target.value})}
+                        placeholder="https://..."
+                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
+                       />
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <p className="text-sm font-black text-muted-foreground uppercase tracking-widest ml-1">Где купить?</p>
@@ -653,6 +737,31 @@ export default function ShoppingListPage() {
                     Срочно
                   </button>
                 </div>
+
+                {editingItem.shopId === 'market' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Артикул (SKU)</p>
+                       <input
+                        type="text"
+                        value={editingItem.sku || ''}
+                        onChange={(e) => setEditingItem({...editingItem, sku: e.target.value})}
+                        placeholder="000000"
+                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
+                       />
+                    </div>
+                    <div className="space-y-2">
+                       <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
+                       <input
+                        type="text"
+                        value={editingItem.link || ''}
+                        onChange={(e) => setEditingItem({...editingItem, link: e.target.value})}
+                        placeholder="https://..."
+                        className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
+                       />
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <p className="text-sm font-black text-muted-foreground uppercase tracking-widest ml-1">Магазин</p>

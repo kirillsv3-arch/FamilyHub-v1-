@@ -71,6 +71,9 @@ export interface ShoppingItem {
   shopId: string;
   priority: 'normal' | 'urgent';
   price?: number;
+  sku?: string;
+  link?: string;
+  isOrdered?: boolean;
 }
 
 export interface WishlistItem {
