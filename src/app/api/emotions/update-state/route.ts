@@ -1,40 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import admin from 'firebase-admin';
+import '@/lib/firebase-admin'; // Ensure admin is initialized
+
+const db = admin.apps.length ? admin.firestore() : null;
+
+async function verifyToken(req: NextRequest) {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.split('Bearer ')[1];
+  try {
+    return await admin.auth().verifyIdToken(token);
+  } catch (error) {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { userId, emotions, statusTag } = body;
+  if (!db) {
+    return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
+  }
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+  try {
+    const decodedToken = await verifyToken(req);
+    if (!decodedToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userRef = doc(db, 'users', userId);
+    const userId = decodedToken.uid; // Securely get userId from token
+    const body = await req.json();
+    const { emotions, statusTag } = body;
+
+    const userRef = db.doc(`users/${userId}`);
     const updateData: any = {};
 
     if (emotions) {
       updateData.emotions = {
         ...emotions,
-        updatedAt: serverTimestamp()
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
     }
 
     if (statusTag) {
       updateData.statusTag = {
         ...statusTag,
-        updatedAt: serverTimestamp()
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
     }
 
-    // Using setDoc with merge: true is safer than updateDoc
-    await setDoc(userRef, updateData, { merge: true });
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: true, message: 'No data to update' });
+    }
+
+    await userRef.set(updateData, { merge: true });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error updating emotion state:', error);
-    // Always return a JSON response to prevent frontend fetch hangs
     return NextResponse.json(
       { error: error.message || 'Unknown error' },
       { status: 500 }

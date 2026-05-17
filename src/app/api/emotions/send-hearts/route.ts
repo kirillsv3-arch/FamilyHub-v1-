@@ -1,63 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { doc, setDoc, increment, collection, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
-import { sendPushNotification } from '@/lib/firebase-admin';
+import admin from 'firebase-admin';
+import '@/lib/firebase-admin'; // Ensure admin is initialized
+
+const db = admin.apps.length ? admin.firestore() : null;
+
+async function verifyToken(req: NextRequest) {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.split('Bearer ')[1];
+  try {
+    return await admin.auth().verifyIdToken(token);
+  } catch (error) {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
-  try {
-    const { senderId, receiverId, count } = await req.json();
+  if (!db) {
+    return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
+  }
 
-    if (!senderId || !receiverId || !count) {
+  try {
+    const decodedToken = await verifyToken(req);
+    if (!decodedToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { receiverId, count } = body;
+    const senderId = decodedToken.uid; // Securely get senderId from token
+
+    if (!receiverId || !count) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const batch = db.batch();
 
-    // Update stats using setDoc with merge: true to avoid crashes if doc doesn't exist
-    const updateStats = async (uid: string, docId: string, field: string) => {
-      const ref = doc(db, 'users', uid, 'heart_stats', docId);
-      await setDoc(ref, {
-        [field]: increment(count),
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-    };
+    const senderTotalRef = db.doc(`users/${senderId}/heart_stats/total`);
+    const senderMonthRef = db.doc(`users/${senderId}/heart_stats/${currentMonth}`);
+    const receiverTotalRef = db.doc(`users/${receiverId}/heart_stats/total`);
+    const receiverMonthRef = db.doc(`users/${receiverId}/heart_stats/${currentMonth}`);
 
-    await Promise.all([
-      updateStats(senderId, 'total', 'sent'),
-      updateStats(senderId, currentMonth, 'sent'),
-      updateStats(receiverId, 'total', 'received'),
-      updateStats(receiverId, currentMonth, 'received')
-    ]);
+    batch.set(senderTotalRef, { sent: admin.firestore.FieldValue.increment(count), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(senderMonthRef, { sent: admin.firestore.FieldValue.increment(count), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(receiverTotalRef, { received: admin.firestore.FieldValue.increment(count), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(receiverMonthRef, { received: admin.firestore.FieldValue.increment(count), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
-    // Get sender name for the push notification
-    const senderDoc = await getDoc(doc(db, 'users', senderId));
-    const senderName = senderDoc.exists() ? senderDoc.data().name : 'Партнер';
-
-    // Create signal for real-time animation
-    await addDoc(collection(db, 'heart_signals'), {
+    // Create signal document
+    const signalRef = db.collection('heart_signals').doc();
+    batch.set(signalRef, {
       senderId,
       receiverId,
       count,
-      timestamp: serverTimestamp()
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Send Push Notification if receiver has a token
-    const receiverDoc = await getDoc(doc(db, 'users', receiverId));
-    if (receiverDoc.exists()) {
-      const receiverData = receiverDoc.data();
-      if (receiverData.fcmToken) {
-        await sendPushNotification(
-          receiverData.fcmToken,
-          'Новые сердечки! ❤️',
-          `${senderName} отправил(а) вам ${count} сердечек!`,
-          { type: 'HEARTS', count: count.toString() }
-        );
+    await batch.commit();
+
+    // Background notification
+    (async () => {
+      try {
+        const [senderDoc, receiverDoc] = await Promise.all([
+          db.doc(`users/${senderId}`).get(),
+          db.doc(`users/${receiverId}`).get()
+        ]);
+
+        const receiverData = receiverDoc.data();
+        if (receiverData?.fcmToken) {
+          const senderName = senderDoc.exists ? senderDoc.data()?.name : 'Партнер';
+          await admin.messaging().send({
+            token: receiverData.fcmToken,
+            notification: {
+              title: 'Новые сердечки! ❤️',
+              body: `${senderName} отправил(а) вам ${count} сердечек!`
+            },
+            data: { type: 'HEARTS', count: count.toString() },
+            android: { priority: 'high' },
+            apns: { payload: { aps: { contentAvailable: true } } },
+          });
+        }
+      } catch (err) {
+        console.warn('Background notification error:', err);
       }
-    }
+    })();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Error sending hearts:', error);
+    console.error('Error sending hearts API:', error);
     return NextResponse.json(
       { error: error.message || 'Unknown error' },
       { status: 500 }

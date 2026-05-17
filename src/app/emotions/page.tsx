@@ -154,33 +154,58 @@ export default function EmotionsPage() {
     setSentCount(prev => prev + count);
 
     try {
+      const token = await user.getIdToken();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
       const response = await fetch('/api/emotions/send-hearts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
-          senderId: user.uid,
           receiverId: partner.uid,
           count
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send hearts:', error);
+      // Revert optimistic update on failure
+      setSentCount(prev => prev - count);
     }
   };
 
   const handleUpdateEmotions = async (emotions: any) => {
     if (!user || JSON.stringify(emotions) === JSON.stringify(profile?.emotions)) return;
     try {
+      const token = await user.getIdToken();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
       const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, emotions })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ emotions }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
       }
     } catch (error) {
       console.error('Failed to update emotions:', error);
@@ -190,13 +215,25 @@ export default function EmotionsPage() {
   const handleUpdateStatus = async (statusTag: any) => {
     if (!user || JSON.stringify(statusTag) === JSON.stringify(profile?.statusTag)) return;
     try {
+      const token = await user.getIdToken();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
       const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, statusTag })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ statusTag }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
       }
     } catch (error) {
       console.error('Failed to update status:', error);
