@@ -42,7 +42,39 @@ export interface UserProfile {
   email: string;
   dob: string;
   familyId: string | null;
+  partnerId?: string | null;
   createdAt: any;
+  emotions?: EmotionState;
+  statusTag?: StatusTag;
+}
+
+export interface EmotionState {
+  mood: number;    // 1-10
+  stress: number;  // 1-10
+  energy: number;  // 1-10
+  sleep: number;   // 1-10
+  updatedAt: any;
+}
+
+export interface StatusTag {
+  text: string;
+  emoji: string;
+  updatedAt: any;
+}
+
+export interface HeartStats {
+  sent: number;
+  received: number;
+  period: 'all' | 'month';
+  lastSentAt?: any;
+}
+
+export interface HeartSignal {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  count: number;
+  timestamp: any;
 }
 
 export interface Family {

@@ -1,0 +1,14 @@
+
+> temp-next-app@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 529ms
+
+○ Compiling /emotions ...
+ GET /emotions 200 in 9.7s (next.js: 8.7s, application-code: 1023ms)
+✓ Compiled in 1013ms
+ GET /emotions 200 in 780ms (next.js: 214ms, application-code: 566ms)
+ GET /emotions 200 in 92ms (next.js: 8ms, application-code: 84ms)
