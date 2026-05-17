@@ -90,26 +90,31 @@ export default function EmotionsPage() {
   // Listen for incoming heart signals
   useEffect(() => {
     if (!user) return;
+
+    // To avoid composite index requirement, we remove orderBy on the server side
+    // and handle the latest signal logic on the client.
     const q = query(
       collection(db, 'heart_signals'),
-      where('receiverId', '==', user.uid),
-      orderBy('timestamp', 'desc'),
-      limit(1)
+      where('receiverId', '==', user.uid)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          setIncomingHearts({ id: change.doc.id, count: data.count });
+      // Find the most recent signal from the added changes
+      const additions = snapshot.docChanges()
+        .filter(change => change.type === 'added')
+        .map(change => ({ id: change.doc.id, ...change.doc.data() as any }))
+        .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
 
-          // Delete the signal after processing
-          await deleteDoc(doc(db, 'heart_signals', change.doc.id));
+      if (additions.length > 0) {
+        const latest = additions[0];
+        setIncomingHearts({ id: latest.id, count: latest.count });
 
-          // Clear animation state after 3 seconds
-          setTimeout(() => setIncomingHearts(null), 3000);
-        }
-      });
+        // Delete the signal after processing to prevent replays
+        deleteDoc(doc(db, 'heart_signals', latest.id));
+
+        // Clear animation state after 3 seconds
+        setTimeout(() => setIncomingHearts(null), 3000);
+      }
     });
 
     return () => unsub();
