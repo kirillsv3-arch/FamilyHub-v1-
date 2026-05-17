@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import {
+  Bell,
   ShoppingCart,
   Calendar,
   Wallet,
@@ -27,9 +28,25 @@ const navItems = [
   { id: 'menu', title: 'Меню', icon: UtensilsCrossed, color: 'bg-orange-500', href: '/menu' },
 ];
 
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { Family } from '@/lib/types';
+import { motion, AnimatePresence } from 'framer-motion';
+
 export default function Dashboard() {
   const { user, profile, loading } = useAuth();
+  const [family, setFamily] = useState<Family | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (profile?.familyId) {
+      return onSnapshot(doc(db, 'families', profile.familyId), (snapshot) => {
+        if (snapshot.exists()) {
+          setFamily(snapshot.data() as Family);
+        }
+      });
+    }
+  }, [profile?.familyId]);
 
   useEffect(() => {
     if (!loading) {
@@ -50,8 +67,29 @@ export default function Dashboard() {
     return <div className="flex items-center justify-center min-h-screen">Загрузка...</div>;
   }
 
+  const usersInShop = family?.inShop ? Object.entries(family.inShop) : [];
+
   return (
     <main className="min-h-screen p-4 pb-20">
+      {/* In Shop Banner */}
+      <AnimatePresence>
+        {usersInShop.length > 0 && (
+          <motion.div
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -20, opacity: 0 }}
+            className="mb-4 bg-primary text-white p-3 rounded-2xl flex items-center gap-3 shadow-lg shadow-primary/20"
+          >
+            <Bell size={18} className="animate-bounce" />
+            <div className="text-xs font-bold uppercase tracking-wider">
+              {usersInShop.map(([uid, data]) => (
+                <span key={uid}>{data.userName} в "{data.shopName}"!</span>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="flex justify-between items-center mb-8 pt-4">
         <div>
           <h1 className="text-2xl font-bold">FamilyHub</h1>

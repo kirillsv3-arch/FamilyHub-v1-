@@ -51,6 +51,14 @@ export interface Family {
   code: string;
   createdAt: any;
   creatorId: string;
+  inShop?: {
+    [uid: string]: {
+      userName: string;
+      shopId: string;
+      shopName: string;
+      timestamp: any;
+    }
+  }
 }
 
 export interface ShoppingItem {
