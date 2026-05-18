@@ -16,8 +16,12 @@ import {
   User as UserIcon,
   Settings
 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
+import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { Family, Tamagotchi, ShoppingItem, Task, MealPlan } from '@/lib/types';
+import { motion, AnimatePresence } from 'framer-motion';
+import StatusWidget from '@/components/dashboard/StatusWidget';
 
 const navItems = [
   { id: 'shopping-list', title: 'Список покупок', icon: ShoppingCart, color: 'bg-blue-500', href: '/shopping-list' },
@@ -28,25 +32,68 @@ const navItems = [
   { id: 'menu', title: 'Меню', icon: UtensilsCrossed, color: 'bg-orange-500', href: '/menu' },
 ];
 
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Family } from '@/lib/types';
-import { motion, AnimatePresence } from 'framer-motion';
-import TamagotchiWidget from '@/components/tamagotchi/TamagotchiWidget';
-
 export default function Dashboard() {
   const { user, profile, loading } = useAuth();
   const [family, setFamily] = useState<Family | null>(null);
+  const [tamagotchi, setTamagotchi] = useState<Tamagotchi | null>(null);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [currentMeal, setCurrentMeal] = useState<MealPlan | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    if (profile?.familyId) {
-      return onSnapshot(doc(db, 'families', profile.familyId), (snapshot) => {
-        if (snapshot.exists()) {
-          setFamily(snapshot.data() as Family);
-        }
-      });
-    }
+    if (!profile?.familyId) return;
+
+    // 1. Family Listener
+    const unsubFamily = onSnapshot(doc(db, 'families', profile.familyId), (snapshot) => {
+      if (snapshot.exists()) setFamily(snapshot.data() as Family);
+    });
+
+    // 2. Tamagotchi Listener
+    const unsubTama = onSnapshot(doc(db, 'tamagotchi', profile.familyId), (snapshot) => {
+      if (snapshot.exists()) setTamagotchi(snapshot.data() as Tamagotchi);
+    });
+
+    // 3. Shopping List (Pending items)
+    const unsubShopping = onSnapshot(
+      query(collection(db, 'shoppingList'), where('familyId', '==', profile.familyId), where('completed', '==', false)),
+      (snapshot) => {
+        setShoppingItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ShoppingItem)));
+      }
+    );
+
+    // 4. Tasks (Pending items)
+    const unsubTasks = onSnapshot(
+      query(collection(db, 'tasks'), where('familyId', '==', profile.familyId), where('completed', '==', false)),
+      (snapshot) => {
+        setTasks(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
+      }
+    );
+
+    // 5. Current Meal
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const hour = new Date().getHours();
+    let mealType = '';
+    if (hour >= 5 && hour < 11) mealType = 'breakfast';
+    else if (hour >= 11 && hour < 17) mealType = 'lunch';
+    else if (hour >= 17 && hour < 23) mealType = 'dinner';
+
+    const unsubMeal = onSnapshot(
+      query(collection(db, 'mealPlans'), where('familyId', '==', profile.familyId), where('date', '==', todayStr)),
+      (snapshot) => {
+        const plans = snapshot.docs.map(d => d.data() as MealPlan);
+        const current = plans.find(p => p.mealType === mealType);
+        setCurrentMeal(current || null);
+      }
+    );
+
+    return () => {
+      unsubFamily();
+      unsubTama();
+      unsubShopping();
+      unsubTasks();
+      unsubMeal();
+    };
   }, [profile?.familyId]);
 
   useEffect(() => {
@@ -91,13 +138,9 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      <header className="flex justify-between items-center mb-8 pt-4">
+      <header className="flex justify-between items-center mb-6 pt-4">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">FamilyHub</h1>
-          <p className="text-muted-foreground">Привет, {profile.name}!</p>
-        </div>
-        <div className="mr-4">
-          <TamagotchiWidget />
+          <h1 className="text-2xl font-black tracking-tight">FamilyHub</h1>
         </div>
         <div className="flex gap-2">
           <button 
@@ -123,6 +166,18 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+
+      {/* Main Status Widget */}
+      <div className="mb-8">
+        <StatusWidget
+          profile={profile}
+          tamagotchi={tamagotchi}
+          shoppingItems={shoppingItems}
+          tasks={tasks}
+          currentMeal={currentMeal}
+          hasEmotionCheckIn={!!profile.emotions && new Date(profile.emotions.updatedAt?.toMillis ? profile.emotions.updatedAt.toMillis() : Date.now()).toDateString() === new Date().toDateString()}
+        />
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         {navItems.map((item) => (
