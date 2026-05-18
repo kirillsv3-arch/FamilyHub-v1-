@@ -3,6 +3,7 @@ import admin from 'firebase-admin';
 import '@/lib/firebase-admin'; // Ensure admin is initialized
 import { boostTamagotchi } from '@/lib/tamagotchi-admin';
 import { verifyToken } from '@/lib/auth-server';
+import { calculateAtmosphereIndexServer } from '@/lib/utils-server';
 
 const db = admin.apps.length ? admin.firestore() : null;
 
@@ -43,6 +44,15 @@ export async function POST(req: NextRequest) {
     }
 
     await userRef.set(updateData, { merge: true });
+
+    if (emotions) {
+      const historyRef = db.collection(`users/${userId}/emotion_history`);
+      await historyRef.add({
+        ...emotions,
+        atmosphereIndex: calculateAtmosphereIndexServer(emotions),
+        date: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
 
     // Boost Tamagotchi Happiness on state update
     try {

@@ -23,8 +23,9 @@ import HeartComponent from '@/components/emotions/HeartComponent';
 import EmotionSliders from '@/components/emotions/EmotionSliders';
 import AtmosphereWidget from '@/components/emotions/AtmosphereWidget';
 import StatusTags from '@/components/emotions/StatusTags';
+import AtmosphereChart from '@/components/emotions/AtmosphereChart';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, differenceInHours } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 export default function EmotionsPage() {
@@ -248,6 +249,8 @@ export default function EmotionsPage() {
   };
 
   const atmosphereIndex = calculateAtmosphereIndex(profile?.emotions, partner?.emotions);
+  const partnerAvg = partner?.emotions ? (partner.emotions.mood + partner.emotions.energy + partner.emotions.sleep + (11 - partner.emotions.stress)) / 4 * 10 : 100;
+  const showCheckInBanner = !profile?.emotions?.updatedAt || differenceInHours(new Date(), profile.emotions.updatedAt.toDate()) > 20;
 
   return (
     <main className="min-h-screen pb-24 bg-zinc-950 text-zinc-100">
@@ -301,6 +304,21 @@ export default function EmotionsPage() {
       </header>
 
       <div className="p-4 space-y-10 relative z-0">
+        {/* Daily check-in banner */}
+        {showCheckInBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-1 p-4 rounded-2xl bg-primary/10 border border-primary/20 flex items-center gap-3"
+          >
+            <span className="text-2xl">🌅</span>
+            <div>
+              <p className="text-sm font-bold text-primary">Как ты сегодня?</p>
+              <p className="text-xs text-zinc-400">Обнови своё состояние — партнёр увидит</p>
+            </div>
+          </motion.div>
+        )}
+
         {/* Real-time incoming heart animation */}
         <AnimatePresence>
           {incomingHearts && (
@@ -308,17 +326,37 @@ export default function EmotionsPage() {
               initial={{ opacity: 0, scale: 0.5, y: 50 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 1.5, y: -100 }}
-              className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
             >
-              <div className="relative">
-                <div className="text-[120px] filter drop-shadow-[0_0_30px_rgba(244,63,94,0.5)] animate-bounce">❤️</div>
-                <div className="absolute -top-2 -right-2 bg-white text-rose-500 px-6 py-2 rounded-full font-black text-2xl shadow-[0_10px_30px_rgba(0,0,0,0.3)] border-2 border-rose-100">
-                  +{incomingHearts.count}
+              <div className="relative flex flex-col items-center">
+                <div className="relative">
+                  <div className="text-[120px] filter drop-shadow-[0_0_30px_rgba(244,63,94,0.5)] animate-bounce">❤️</div>
+                  <div className="absolute -top-2 -right-2 bg-white text-rose-500 px-6 py-2 rounded-full font-black text-2xl shadow-[0_10px_30px_rgba(0,0,0,0.3)] border-2 border-rose-100">
+                    +{incomingHearts.count}
+                  </div>
                 </div>
                 <div className="bg-zinc-900/80 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 mt-8 shadow-2xl">
                   <p className="text-center font-black text-white text-lg tracking-tight">
                     {partner?.name || 'Партнер'} шлет любовь!
                   </p>
+                </div>
+
+                <div className="flex gap-3 mt-8 pointer-events-auto">
+                  <button
+                    onClick={() => {
+                      handleSendHearts(1);
+                      setIncomingHearts(null);
+                    }}
+                    className="px-8 py-4 bg-rose-500 text-white rounded-full font-black text-sm shadow-lg shadow-rose-500/20 active:scale-95 transition-all"
+                  >
+                    ❤️ Ответить
+                  </button>
+                  <button
+                    onClick={() => setIncomingHearts(null)}
+                    className="px-8 py-4 bg-zinc-800 text-zinc-300 rounded-full font-black text-sm active:scale-95 transition-all"
+                  >
+                    🙂 Принято
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -369,7 +407,15 @@ export default function EmotionsPage() {
                 onSave={() => {}}
                 disabled={true}
                 lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
+                updatedAt={partner.emotions?.updatedAt}
               />
+              {partnerAvg < 40 && (
+                <div className="mt-4 p-4 rounded-2xl bg-rose-950/40 border border-rose-900/50">
+                  <p className="text-sm text-rose-300 font-medium">
+                    💙 Кажется, {partner.name} сейчас нелегко. Может, написать или обнять?
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-10 border border-dashed border-zinc-800 rounded-[2.5rem] bg-zinc-900/20 flex flex-col items-center justify-center text-center space-y-3">
@@ -403,15 +449,7 @@ export default function EmotionsPage() {
                 </button>
               </div>
 
-              <div className="p-12 border-2 border-dashed border-zinc-800 rounded-[2.5rem] bg-zinc-950/50 flex flex-col items-center text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-zinc-900 flex items-center justify-center">
-                  <TrendingUp size={32} className="text-zinc-700" />
-                </div>
-                <p className="text-zinc-500 font-bold text-sm leading-relaxed max-w-[240px]">
-                  Здесь будет отображаться график изменения индекса за неделю.
-                  <br/><span className="opacity-50">Функционал в разработке.</span>
-                </p>
-              </div>
+              <AtmosphereChart userId={user?.uid || ''} />
 
               <div className="space-y-5">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 ml-2">Как это работает?</h3>

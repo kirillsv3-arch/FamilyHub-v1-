@@ -13,6 +13,7 @@ interface EmotionSlidersProps {
   disabled?: boolean;
   title?: string;
   lastUpdated?: string;
+  updatedAt?: any;
 }
 
 const metrics = [
@@ -22,7 +23,7 @@ const metrics = [
   { key: 'sleep', label: 'Качество сна', min: 'Не спал', max: 'Идеально', gradient: 'from-zinc-700 via-indigo-500 to-purple-400' },
 ] as const;
 
-export default function EmotionSliders({ initialState, onSave, disabled = false, title = "Твое состояние", lastUpdated }: EmotionSlidersProps) {
+export default function EmotionSliders({ initialState, onSave, disabled = false, title = "Твое состояние", lastUpdated, updatedAt }: EmotionSlidersProps) {
   const [state, setState] = useState(initialState || { mood: 5, stress: 5, energy: 5, sleep: 5 });
   const prevStateRef = useRef(initialState);
 
@@ -48,7 +49,18 @@ export default function EmotionSliders({ initialState, onSave, disabled = false,
       <div className="flex flex-col space-y-1">
         <div className="flex justify-between items-end">
           <h3 className="text-xl font-black tracking-tight">{title}</h3>
-          {lastUpdated && <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{lastUpdated}</span>}
+          {lastUpdated && (
+            <span className={`text-[10px] font-bold uppercase tracking-widest ${
+              updatedAt ? (
+                (Date.now() - updatedAt.toMillis()) / 3600000 > 48 ? 'text-red-500' :
+                (Date.now() - updatedAt.toMillis()) / 3600000 > 24 ? 'text-yellow-500' :
+                'text-zinc-500'
+              ) : 'text-zinc-500'
+            }`}>
+              {updatedAt && (Date.now() - updatedAt.toMillis()) / 3600000 > 24 && '⚠️ '}
+              {lastUpdated}
+            </span>
+          )}
         </div>
         <div className="h-1 w-12 bg-rose-500 rounded-full" />
       </div>
