@@ -36,84 +36,116 @@ export default function EmotionsPage() {
   const [incomingHearts, setIncomingHearts] = useState<{ id: string; count: number } | null>(null);
   const [isAtmosphereOpen, setIsAtmosphereOpen] = useState(false);
 
-  // Fetch partner data
+  // Real-time partner data listener
   useEffect(() => {
-    if (!profile?.familyId || !user) return;
+    if (!profile?.familyId || !user?.uid) return;
 
-    const fetchPartner = async () => {
-      // Use partnerId if explicitly set
-      if (profile.partnerId) {
-        const partnerDoc = await getDoc(doc(db, 'users', profile.partnerId));
-        if (partnerDoc.exists()) {
-          setPartner({ uid: partnerDoc.id, ...partnerDoc.data() });
-          return;
+    let unsubscribePartner: () => void;
+
+    const setupPartnerListener = async () => {
+      let partnerUid = profile.partnerId;
+
+      // If no partnerId, find the first other family member (One-time check, no direct setDoc here to avoid loops)
+      if (!partnerUid) {
+        const q = query(
+          collection(db, 'users'),
+          where('familyId', '==', profile.familyId)
+        );
+        const querySnapshot = await getDocs(q);
+        const partnerDoc = querySnapshot.docs.find(d => d.id !== user.uid);
+        if (partnerDoc) {
+          partnerUid = partnerDoc.id;
+          // We don't call setDoc here because profile update triggers this effect again.
+          // Instead, we just use the ID for the listener.
         }
       }
 
-      // Fallback: search for partner in the family if not set yet
-      const q = query(
-        collection(db, 'users'),
-        where('familyId', '==', profile.familyId)
-      );
-      const querySnapshot = await getDocs(q);
-      const partnerDoc = querySnapshot.docs.find(d => d.id !== user.uid);
-      if (partnerDoc) {
-        setPartner({ uid: partnerDoc.id, ...partnerDoc.data() });
-        // Implicitly set partnerId for the future to fix the logic
-        await setDoc(doc(db, 'users', user.uid), { partnerId: partnerDoc.id }, { merge: true });
+      if (partnerUid) {
+        unsubscribePartner = onSnapshot(doc(db, 'users', partnerUid), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setPartner((prev: any) => {
+              const newData = { uid: docSnap.id, ...data };
+              if (JSON.stringify(prev) === JSON.stringify(newData)) return prev;
+              return newData;
+            });
+          }
+        }, (error) => console.warn("Partner listener error:", error));
       }
     };
 
-    fetchPartner();
-  }, [profile?.familyId, profile?.partnerId, user]);
+    setupPartnerListener();
+    return () => {
+      if (unsubscribePartner) unsubscribePartner();
+    };
+  }, [profile?.familyId, profile?.partnerId, user?.uid]);
 
   // Listen to heart stats
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
     const currentMonth = new Date().toISOString().slice(0, 7);
     const docId = period === 'all' ? 'total' : currentMonth;
 
     const unsub = onSnapshot(doc(db, 'users', user.uid, 'heart_stats', docId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setSentCount(data.sent || 0);
-        setReceivedCount(data.received || 0);
+        // Update only if values actually changed to prevent re-renders
+        setSentCount(prev => (prev !== data.sent ? (data.sent || 0) : prev));
+        setReceivedCount(prev => (prev !== data.received ? (data.received || 0) : prev));
       } else {
         setSentCount(0);
         setReceivedCount(0);
       }
+    }, (error) => {
+      console.warn("Heart stats listener error:", error);
     });
 
     return () => unsub();
-  }, [user, period]);
+  }, [user?.uid, period]);
 
-  // Listen for incoming heart signals
+  // Listen for incoming heart signals - optimized and safer
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
+
     const q = query(
       collection(db, 'heart_signals'),
-      where('receiverId', '==', user.uid),
-      orderBy('timestamp', 'desc'),
-      limit(1)
+      where('receiverId', '==', user.uid)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          setIncomingHearts({ id: change.doc.id, count: data.count });
+      // metadata.hasPendingWrites check to avoid processing our own deletions as changes
+      if (snapshot.empty || snapshot.metadata.hasPendingWrites) return;
 
-          // Delete the signal after processing
-          await deleteDoc(doc(db, 'heart_signals', change.doc.id));
+      // Find the most recent signal from the added changes
+      const additions = snapshot.docChanges()
+        .filter(change => change.type === 'added')
+        .map(change => ({ id: change.doc.id, ...change.doc.data() as any }))
+        .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+
+      if (additions.length > 0) {
+        const latest = additions[0];
+
+        // Only trigger if it's a "fresh" signal (from the last 10 seconds)
+        // to avoid old signals stored in the database
+        const now = Date.now();
+        const signalTime = latest.timestamp?.toMillis() || now;
+        if (now - signalTime < 10000) {
+          setIncomingHearts({ id: latest.id, count: latest.count });
+
+          // Delete the signal after processing to prevent replays
+          deleteDoc(doc(db, 'heart_signals', latest.id)).catch(console.error);
 
           // Clear animation state after 3 seconds
-          setTimeout(() => setIncomingHearts(null), 3000);
+          const timer = setTimeout(() => setIncomingHearts(null), 3000);
+          return () => clearTimeout(timer);
         }
-      });
+      }
+    }, (error) => {
+      console.warn("Heart signals listener error:", error);
     });
 
     return () => unsub();
-  }, [user]);
+  }, [user?.uid]);
 
   const handleSendHearts = async (count: number) => {
     if (!user || !partner) return;
@@ -122,41 +154,87 @@ export default function EmotionsPage() {
     setSentCount(prev => prev + count);
 
     try {
-      await fetch('/api/emotions/send-hearts', {
+      const token = await user.getIdToken();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+      const response = await fetch('/api/emotions/send-hearts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
-          senderId: user.uid,
           receiverId: partner.uid,
           count
-        })
+        }),
+        signal: controller.signal
       });
-    } catch (error) {
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
+      }
+    } catch (error: any) {
       console.error('Failed to send hearts:', error);
+      // Revert optimistic update on failure
+      setSentCount(prev => prev - count);
     }
   };
 
   const handleUpdateEmotions = async (emotions: any) => {
-    if (!user) return;
+    if (!user || JSON.stringify(emotions) === JSON.stringify(profile?.emotions)) return;
     try {
-      await fetch('/api/emotions/update-state', {
+      const token = await user.getIdToken();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, emotions })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ emotions }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to update emotions:', error);
     }
   };
 
   const handleUpdateStatus = async (statusTag: any) => {
-    if (!user) return;
+    if (!user || JSON.stringify(statusTag) === JSON.stringify(profile?.statusTag)) return;
     try {
-      await fetch('/api/emotions/update-state', {
+      const token = await user.getIdToken();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const response = await fetch('/api/emotions/update-state', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, statusTag })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ statusTag }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to update status:', error);
     }
@@ -251,14 +329,25 @@ export default function EmotionsPage() {
         </div>
 
         {/* 5. Partner State */}
-        {partner && (
-          <EmotionSliders
-            title={`Статус ${partner.name}`}
-            initialState={partner.emotions}
-            onSave={() => {}}
-            disabled={true}
-            lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
-          />
+        {partner ? (
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 px-1">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Партнер на связи</span>
+            </div>
+            <EmotionSliders
+              title={`Статус ${partner.name}`}
+              initialState={partner.emotions}
+              onSave={() => {}}
+              disabled={true}
+              lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
+            />
+          </div>
+        ) : (
+          <div className="p-8 border border-dashed border-border rounded-2xl flex flex-col items-center justify-center text-center space-y-2 opacity-50">
+            <Info size={24} className="text-muted-foreground" />
+            <p className="text-sm font-medium">Партнер еще не подключен или не установил статус</p>
+          </div>
         )}
       </div>
 

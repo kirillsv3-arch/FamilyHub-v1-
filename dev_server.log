@@ -2,13 +2,17 @@
 > temp-next-app@0.1.0 dev
 > next dev
 
+⚠ Port 3000 is in use by an unknown process, using available port 3001 instead.
 ▲ Next.js 16.2.6 (Turbopack)
-- Local:         http://localhost:3000
-- Network:       http://192.168.0.2:3000
-✓ Ready in 529ms
+- Local:         http://localhost:3001
+- Network:       http://192.168.0.2:3001
+✓ Ready in 551ms
+⨯ Another next dev server is already running.
 
-○ Compiling /emotions ...
- GET /emotions 200 in 9.7s (next.js: 8.7s, application-code: 1023ms)
-✓ Compiled in 1013ms
- GET /emotions 200 in 780ms (next.js: 214ms, application-code: 566ms)
- GET /emotions 200 in 92ms (next.js: 8ms, application-code: 84ms)
+- Local:        http://localhost:3000
+- PID:          38313
+- Dir:          /app
+- Log:          .next/dev/logs/next-development.log
+
+Run kill 38313 to stop it.
+[?25h

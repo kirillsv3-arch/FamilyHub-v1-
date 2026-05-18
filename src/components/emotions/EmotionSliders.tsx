@@ -24,25 +24,32 @@ const metrics = [
 
 export default function EmotionSliders({ initialState, onSave, disabled = false, title = "Твоё состояние", lastUpdated }: EmotionSlidersProps) {
   const [state, setState] = useState(initialState || { mood: 5, stress: 5, energy: 5, sleep: 5 });
-  const isFirstRender = useRef(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevStateRef = useRef(initialState);
 
   useEffect(() => {
-    if (initialState) {
+    if (initialState && JSON.stringify(initialState) !== JSON.stringify(prevStateRef.current)) {
       setState(initialState);
+      prevStateRef.current = initialState;
     }
   }, [initialState]);
 
   const handleChange = (key: keyof typeof state, value: number) => {
     if (disabled) return;
-    const newState = { ...state, [key]: value };
-    setState(newState);
+    const newValue = value;
 
-    // Debounced save
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      onSave(newState);
-    }, 1500);
+    // Immediate local update for UI responsiveness
+    setState(prev => {
+      const newState = { ...prev, [key]: newValue };
+
+      // Debounced save of the WHOLE state
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        onSave(newState);
+      }, 2000); // 2 seconds as requested
+
+      return newState;
+    });
   };
 
   return (

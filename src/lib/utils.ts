@@ -20,11 +20,14 @@ export function calculateAtmosphereIndex(userEmotions?: any, partnerEmotions?: a
   if (userIndex !== null && partnerIndex !== null) {
     return Math.round((userIndex + partnerIndex) / 2);
   } else if (userIndex !== null) {
+    // If only user has data, we can't really call it "family atmosphere" accurately,
+    // but we show the user's index as a baseline.
     return Math.round(userIndex);
   } else if (partnerIndex !== null) {
     return Math.round(partnerIndex);
   }
-  return 0;
+  // Return a neutral baseline if no data
+  return 50;
 }
 
 export function getAtmosphereStatus(index: number) {

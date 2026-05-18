@@ -1,16 +1,24 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, LogOut, Calendar, User as UserIcon } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { ChevronLeft, LogOut, Calendar, User as UserIcon, Save, Zap } from 'lucide-react';
+import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
 import Link from 'next/link';
 
 export default function ProfilePage() {
   const { user, profile, loading } = useAuth();
   const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [goals, setGoals] = useState({
+    calories: profile?.nutrientGoals?.calories || 2000,
+    proteins: profile?.nutrientGoals?.proteins || 100,
+    fats: profile?.nutrientGoals?.fats || 65,
+    carbs: profile?.nutrientGoals?.carbs || 250,
+  });
 
   if (loading || !user || !profile) {
     return <div className="flex items-center justify-center min-h-screen">Загрузка...</div>;
@@ -19,6 +27,20 @@ export default function ProfilePage() {
   const handleSignOut = async () => {
     await signOut(auth);
     router.push('/login');
+  };
+
+  const handleSaveGoals = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        nutrientGoals: goals
+      });
+    } catch (error) {
+      console.error('Error saving goals:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -55,6 +77,62 @@ export default function ProfilePage() {
               <p className="font-mono text-sm">{profile.familyId}</p>
             </div>
           </div>
+        </div>
+
+        {/* Nutrient Goals */}
+        <div className="bg-card rounded-3xl border border-border p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-6">
+            <Zap className="text-primary" size={24} />
+            <h3 className="text-lg font-bold">Цели питания (КБЖУ)</h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Калории (ккал)</label>
+              <input
+                type="number"
+                value={goals.calories}
+                onChange={(e) => setGoals({ ...goals, calories: parseInt(e.target.value) })}
+                className="w-full p-3 bg-secondary/50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Белки (г)</label>
+              <input
+                type="number"
+                value={goals.proteins}
+                onChange={(e) => setGoals({ ...goals, proteins: parseInt(e.target.value) })}
+                className="w-full p-3 bg-secondary/50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Жиры (г)</label>
+              <input
+                type="number"
+                value={goals.fats}
+                onChange={(e) => setGoals({ ...goals, fats: parseInt(e.target.value) })}
+                className="w-full p-3 bg-secondary/50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Углеводы (г)</label>
+              <input
+                type="number"
+                value={goals.carbs}
+                onChange={(e) => setGoals({ ...goals, carbs: parseInt(e.target.value) })}
+                className="w-full p-3 bg-secondary/50 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={handleSaveGoals}
+            disabled={saving}
+            className="w-full mt-6 p-3 bg-primary text-primary-foreground rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Save size={18} />
+            {saving ? 'Сохранение...' : 'Сохранить цели'}
+          </button>
         </div>
 
         <button
