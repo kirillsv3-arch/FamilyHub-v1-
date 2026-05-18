@@ -50,25 +50,6 @@ export default function TamagotchiPage() {
         const data = snapshot.data() as Tamagotchi;
 
         if (!profile?.familyId) return;
-
-        // Decay logic (Client-side trigger)
-        const lastChecked = data.lastChecked?.toMillis() || Date.now();
-        const hoursPassed = (Date.now() - lastChecked) / (1000 * 60 * 60);
-
-        if (hoursPassed >= 1 && profile.familyId) {
-          const decay = Math.floor(hoursPassed);
-          const newSatiety = Math.max(0, data.satiety - decay * 2);
-          const newHappiness = Math.max(0, data.happiness - decay * 2);
-          const newEnergy = Math.max(0, data.energy - decay * 2);
-
-          updateDoc(doc(db, 'tamagotchi', profile.familyId), {
-            satiety: newSatiety,
-            happiness: newHappiness,
-            energy: newEnergy,
-            lastChecked: serverTimestamp()
-          });
-        }
-
         setTamagotchi(data);
       } else {
         if (!profile?.familyId) return;
@@ -114,10 +95,28 @@ export default function TamagotchiPage() {
     };
   }, [profile?.familyId]);
 
+  useEffect(() => {
+    if (!user || !profile?.familyId) return;
+    const lastDecayCheck = localStorage.getItem(`tama_decay_${profile.familyId}`);
+    const hoursSinceCheck = lastDecayCheck
+      ? (Date.now() - parseInt(lastDecayCheck)) / 3600000
+      : 999;
+
+    if (hoursSinceCheck >= 0.5) {
+      user.getIdToken().then(token =>
+        fetch('/api/tamagotchi/decay', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      );
+      localStorage.setItem(`tama_decay_${profile.familyId}`, Date.now().toString());
+    }
+  }, [user, profile?.familyId]);
+
   if (loading || !tamagotchi || !profile) return null;
 
   const getMood = () => {
-    const avg = (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3;
+    const avg = (Math.max(0, tamagotchi.satiety) + Math.max(0, tamagotchi.happiness) + Math.max(0, tamagotchi.energy)) / 3;
     if (avg < 20) return 'sick';
     if (avg < 50) return 'sad';
     if (avg > 90) return 'happy';
@@ -131,7 +130,7 @@ export default function TamagotchiPage() {
   };
 
   const xpToNextLevel = tamagotchi.level * 100;
-  const xpPercent = (tamagotchi.xp / xpToNextLevel) * 100;
+  const xpPercent = (Math.max(0, tamagotchi.xp) / xpToNextLevel) * 100;
 
   const stageHints = {
     egg:    'Уровень 1–3 · Выполняйте задачи и отправляйте сердечки',
@@ -242,9 +241,9 @@ export default function TamagotchiPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 gap-4">
-          <StatBar icon={<Utensils size={16} />} label="Сытость" value={tamagotchi.satiety} color={getStatColor(tamagotchi.satiety)} />
-          <StatBar icon={<Heart size={16} />} label="Любовь" value={tamagotchi.happiness} color={getStatColor(tamagotchi.happiness)} />
-          <StatBar icon={<Zap size={16} />} label="Энергия" value={tamagotchi.energy} color={getStatColor(tamagotchi.energy)} />
+          <StatBar icon={<Utensils size={16} />} label="Сытость" value={Math.max(0, tamagotchi.satiety)} color={getStatColor(tamagotchi.satiety)} />
+          <StatBar icon={<Heart size={16} />} label="Любовь" value={Math.max(0, tamagotchi.happiness)} color={getStatColor(tamagotchi.happiness)} />
+          <StatBar icon={<Zap size={16} />} label="Энергия" value={Math.max(0, tamagotchi.energy)} color={getStatColor(tamagotchi.energy)} />
         </div>
 
         {/* Shop Link */}

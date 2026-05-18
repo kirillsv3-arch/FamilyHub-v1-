@@ -41,9 +41,9 @@ export default function TamagotchiWidget() {
               <TamagotchiCat
                 stage={tamagotchi.stage}
                 mood={
-                  (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3 < 20 ? 'sick' :
-                  (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3 < 50 ? 'sad' :
-                  (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3 > 90 ? 'happy' : 'normal'
+                  (Math.max(0, tamagotchi.satiety) + Math.max(0, tamagotchi.happiness) + Math.max(0, tamagotchi.energy)) / 3 < 20 ? 'sick' :
+                  (Math.max(0, tamagotchi.satiety) + Math.max(0, tamagotchi.happiness) + Math.max(0, tamagotchi.energy)) / 3 < 50 ? 'sad' :
+                  (Math.max(0, tamagotchi.satiety) + Math.max(0, tamagotchi.happiness) + Math.max(0, tamagotchi.energy)) / 3 > 90 ? 'happy' : 'normal'
                 }
                 items={tamagotchi.items}
               />
