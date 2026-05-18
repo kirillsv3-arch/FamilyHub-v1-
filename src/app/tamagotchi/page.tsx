@@ -22,17 +22,23 @@ import {
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { Tamagotchi, Family } from '@/lib/types';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import TamagotchiCat from '@/components/tamagotchi/TamagotchiCat';
+import { ActionButton } from '@/components/tamagotchi/ActionButton';
+import { formatDistanceToNow } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 export default function TamagotchiPage() {
   const { user, profile } = useAuth();
   const [tamagotchi, setTamagotchi] = useState<Tamagotchi | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
+  const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -91,13 +97,24 @@ export default function TamagotchiPage() {
       }
     });
 
+    // Listen to events
+    const qEvents = query(
+      collection(db, `tamagotchi_events/${profile.familyId}/events`),
+      orderBy('timestamp', 'desc'),
+      limit(10)
+    );
+    const unsubEvents = onSnapshot(qEvents, (snap) => {
+      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsubTama();
       unsubFamily();
+      unsubEvents();
     };
   }, [profile?.familyId]);
 
-  if (loading || !tamagotchi) return null;
+  if (loading || !tamagotchi || !profile) return null;
 
   const getMood = () => {
     const avg = (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3;
@@ -115,6 +132,32 @@ export default function TamagotchiPage() {
 
   const xpToNextLevel = tamagotchi.level * 100;
   const xpPercent = (tamagotchi.xp / xpToNextLevel) * 100;
+
+  const stageHints = {
+    egg:    'Уровень 1–3 · Выполняйте задачи и отправляйте сердечки',
+    kitten: 'Уровень 4–9 · Котёнок растёт! Планируйте меню каждую неделю',
+    junior: 'Уровень 10–19 · Почти взрослый! Следите за бюджетом вместе',
+    adult:  'Уровень 20+ · Взрослый кот. Он с вами навсегда 🐱',
+  };
+
+  const getEventEmoji = (type: string) => {
+    const emojis: any = { fed: '🍖', played: '🎮', slept: '💤', level_up: '⭐', item_bought: '🛍️', hearts_received: '❤️', task_done: '✅', menu_confirmed: '🍽️' };
+    return emojis[type] || '🐾';
+  };
+
+  const getEventText = (event: any) => {
+    switch (event.type) {
+      case 'fed': return `${event.userName} покормил(а) кота`;
+      case 'played': return `${event.userName} поиграл(а) с котом`;
+      case 'slept': return `${event.userName} уложил(а) кота спать`;
+      case 'level_up': return `Уровень повышен! Теперь ${tamagotchi.level}`;
+      case 'item_bought': return `${event.userName}: ${event.details || 'куплен предмет'}`;
+      case 'hearts_received': return `Кот счастлив от ваших сердечек!`;
+      case 'task_done': return `Задача выполнена — энергия выросла!`;
+      case 'menu_confirmed': return `Меню на неделю готово! Кот сыт`;
+      default: return 'Что-то произошло';
+    }
+  };
 
   return (
     <main className="min-h-screen pb-24 bg-background">
@@ -153,8 +196,48 @@ export default function TamagotchiPage() {
         </div>
 
         {/* Character Stage */}
-        <div className="relative">
-           <TamagotchiCat stage={tamagotchi.stage} mood={getMood()} />
+        <div className="relative flex flex-col items-center">
+           <TamagotchiCat stage={tamagotchi.stage} mood={getMood()} items={tamagotchi.items} />
+           <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-primary text-center max-w-[200px]">
+             {stageHints[tamagotchi.stage as keyof typeof stageHints]}
+           </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-3 gap-3 px-1">
+          <ActionButton
+            icon="🍖"
+            label="Покормить"
+            cooldownKey="feed"
+            cooldownMinutes={30}
+            stat="satiety"
+            boostAmount={15}
+            disabled={tamagotchi.satiety >= 95}
+            familyId={profile.familyId || ''}
+            userName={profile.name}
+          />
+          <ActionButton
+            icon="🎮"
+            label="Поиграть"
+            cooldownKey="play"
+            cooldownMinutes={60}
+            stat="happiness"
+            boostAmount={20}
+            disabled={tamagotchi.happiness >= 95}
+            familyId={profile.familyId || ''}
+            userName={profile.name}
+          />
+          <ActionButton
+            icon="💤"
+            label="Уложить спать"
+            cooldownKey="sleep"
+            cooldownMinutes={120}
+            stat="energy"
+            boostAmount={25}
+            disabled={tamagotchi.energy >= 95}
+            familyId={profile.familyId || ''}
+            userName={profile.name}
+          />
         </div>
 
         {/* Stats */}
@@ -173,6 +256,29 @@ export default function TamagotchiPage() {
             <ShoppingBag size={20} />
             Магазин предметов
           </Link>
+        </div>
+
+        {/* History Feed */}
+        <div className="space-y-3 pt-4">
+          <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground px-1">
+            История
+          </h2>
+          <div className="space-y-2">
+            {events.map(event => (
+              <div key={event.id} className="flex items-center gap-3 p-3 bg-card rounded-2xl border border-border">
+                <span className="text-xl">{getEventEmoji(event.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold truncate">{getEventText(event)}</p>
+                  <p className="text-[10px] text-muted-foreground font-black uppercase">
+                    {event.timestamp?.toDate ? formatDistanceToNow(event.timestamp.toDate(), { addSuffix: true, locale: ru }) : 'недавно'}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {events.length === 0 && (
+              <p className="text-xs text-muted-foreground italic text-center py-4">Событий пока нет</p>
+            )}
+          </div>
         </div>
       </div>
     </main>

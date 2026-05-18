@@ -7,6 +7,8 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { Tamagotchi } from '@/lib/types';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import TamagotchiCat from './TamagotchiCat';
 
 export default function TamagotchiWidget() {
   const { profile } = useAuth();
@@ -21,29 +23,44 @@ export default function TamagotchiWidget() {
 
   if (!tamagotchi) return null;
 
-  const getEmoji = () => {
-    if (tamagotchi.stage === 'egg') return '🥚';
-    const avg = (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3;
-    if (avg < 20) return '🤒';
-    if (avg < 50) return '😿';
-    if (avg > 90) return '😸';
-    return '🐱';
-  };
+  const isStressed = tamagotchi.satiety < 20 || tamagotchi.happiness < 20 || tamagotchi.energy < 20;
 
   return (
     <Link href="/tamagotchi">
       <motion.div
-        whileTap={{ scale: 0.9 }}
-        className="p-3 bg-card border border-border rounded-2xl shadow-sm flex items-center gap-3 active:bg-secondary transition-colors"
+        whileTap={{ scale: 0.95 }}
+        animate={isStressed ? { borderColor: ['#27272a', '#ef4444', '#27272a'] } : {}}
+        transition={{ repeat: Infinity, duration: 2 }}
+        className={cn(
+          "p-3 bg-card border rounded-2xl shadow-sm flex items-center gap-3 active:bg-secondary transition-all",
+          isStressed ? "border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]" : "border-border"
+        )}
       >
-        <div className="text-3xl animate-bounce-slow">{getEmoji()}</div>
+        <div className="w-10 h-10 flex items-center justify-center bg-zinc-900 rounded-xl overflow-hidden">
+           <div className="scale-[0.25] transform-gpu">
+              <TamagotchiCat
+                stage={tamagotchi.stage}
+                mood={
+                  (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3 < 20 ? 'sick' :
+                  (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3 < 50 ? 'sad' :
+                  (tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3 > 90 ? 'happy' : 'normal'
+                }
+                items={tamagotchi.items}
+              />
+           </div>
+        </div>
         <div className="flex-1">
-          <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-none mb-1">Питомец</p>
-          <div className="w-full h-1 bg-secondary rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary"
-              style={{ width: `${(tamagotchi.satiety + tamagotchi.happiness + tamagotchi.energy) / 3}%` }}
-            />
+          <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-none mb-1.5">Питомец</p>
+          <div className="flex gap-1">
+            {[tamagotchi.satiety, tamagotchi.happiness, tamagotchi.energy].map((v, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "w-1.5 h-1.5 rounded-full transition-colors",
+                  v < 20 ? 'bg-red-500' : v < 50 ? 'bg-yellow-500' : 'bg-green-500'
+                )}
+              />
+            ))}
           </div>
         </div>
       </motion.div>

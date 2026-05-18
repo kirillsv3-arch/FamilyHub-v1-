@@ -26,9 +26,9 @@ export async function boostTamagotchi(familyId: string, type: 'satiety' | 'happi
 
     // Determine stage based on level
     let stage = data.stage;
-    if (newLevel >= 15) stage = 'adult';
-    else if (newLevel >= 7) stage = 'junior';
-    else if (newLevel >= 3) stage = 'kitten';
+    if (newLevel >= 20) stage = 'adult';
+    else if (newLevel >= 10) stage = 'junior';
+    else if (newLevel >= 4) stage = 'kitten';
     else stage = 'egg';
 
     const updates: any = {

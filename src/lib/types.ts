@@ -163,7 +163,7 @@ export interface TamagotchiItem {
   name: string;
   price: number;
   image: string;
-  category: 'hat' | 'decor' | 'furniture';
+  category: 'hat' | 'decor' | 'furniture' | 'food';
 }
 
 export interface WishlistItem {
