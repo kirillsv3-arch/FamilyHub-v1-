@@ -35,6 +35,7 @@ export default function EmotionsPage() {
   const [period, setPeriod] = useState<'all' | 'month'>('month');
   const [incomingHearts, setIncomingHearts] = useState<{ id: string; count: number } | null>(null);
   const [isAtmosphereOpen, setIsAtmosphereOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Real-time partner data listener
   useEffect(() => {
@@ -186,6 +187,7 @@ export default function EmotionsPage() {
 
   const handleUpdateEmotions = async (emotions: any) => {
     if (!user || JSON.stringify(emotions) === JSON.stringify(profile?.emotions)) return;
+    setIsSaving(true);
     try {
       const token = await user.getIdToken();
       const controller = new AbortController();
@@ -209,11 +211,14 @@ export default function EmotionsPage() {
       }
     } catch (error) {
       console.error('Failed to update emotions:', error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleUpdateStatus = async (statusTag: any) => {
     if (!user || JSON.stringify(statusTag) === JSON.stringify(profile?.statusTag)) return;
+    setIsSaving(true);
     try {
       const token = await user.getIdToken();
       const controller = new AbortController();
@@ -237,49 +242,65 @@ export default function EmotionsPage() {
       }
     } catch (error) {
       console.error('Failed to update status:', error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const atmosphereIndex = calculateAtmosphereIndex(profile?.emotions, partner?.emotions);
 
   return (
-    <main className="min-h-screen pb-24 bg-background">
+    <main className="min-h-screen pb-24 bg-zinc-950 text-zinc-100">
       {/* Header */}
-      <header className="p-4 pt-8 sticky top-0 bg-background/80 backdrop-blur-md z-10">
+      <header className="p-4 pt-8 sticky top-0 bg-zinc-950/80 backdrop-blur-lg z-50">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center">
-            <Link href="/" className="p-2 -ml-2 rounded-full hover:bg-secondary transition-colors">
+            <Link href="/" className="p-2 -ml-2 rounded-full hover:bg-zinc-800 transition-colors">
               <ChevronLeft size={24} />
             </Link>
-            <h1 className="text-2xl font-bold ml-2">Эмоции</h1>
+          <div className="ml-2">
+            <h1 className="text-2xl font-bold leading-none">Эмоции</h1>
+            <AnimatePresence>
+              {isSaving && (
+                <motion.span
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 5 }}
+                  className="text-[9px] font-black uppercase tracking-[0.2em] text-rose-500 absolute"
+                >
+                  Сохранение...
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </div>
           </div>
           <button
             onClick={() => setPeriod(period === 'all' ? 'month' : 'all')}
-            className="px-3 py-1 bg-secondary rounded-full text-xs font-bold uppercase tracking-wider"
+            className="px-4 py-1.5 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors"
           >
             {period === 'month' ? 'Месяц' : 'Все время'}
           </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Отправлено</p>
+          <div className="p-4 rounded-[2rem] bg-zinc-900/50 border border-white/5 backdrop-blur-sm shadow-xl">
+            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-1">Отправлено</p>
             <div className="flex items-baseline space-x-1">
-              <span className="text-2xl font-black text-primary">{sentCount}</span>
-              <span className="text-red-500">❤️</span>
+              <span className="text-2xl font-black text-white">{sentCount}</span>
+              <span className="text-red-500 text-sm">❤️</span>
             </div>
           </div>
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Получено</p>
+          <div className="p-4 rounded-[2rem] bg-zinc-900/50 border border-white/5 backdrop-blur-sm shadow-xl">
+            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-1">Получено</p>
             <div className="flex items-baseline space-x-1">
-              <span className="text-2xl font-black text-primary">{receivedCount}</span>
-              <span className="text-red-500">❤️</span>
+              <span className="text-2xl font-black text-white">{receivedCount}</span>
+              <span className="text-red-500 text-sm">❤️</span>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="p-4 space-y-8">
+      <div className="p-4 space-y-10 relative z-0">
         {/* Real-time incoming heart animation */}
         <AnimatePresence>
           {incomingHearts && (
@@ -287,40 +308,46 @@ export default function EmotionsPage() {
               initial={{ opacity: 0, scale: 0.5, y: 50 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 1.5, y: -100 }}
-              className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center"
+              className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
             >
               <div className="relative">
-                <div className="text-8xl animate-bounce">❤️</div>
-                <div className="absolute -top-4 -right-4 bg-primary text-primary-foreground px-4 py-2 rounded-full font-black text-xl shadow-2xl">
+                <div className="text-[120px] filter drop-shadow-[0_0_30px_rgba(244,63,94,0.5)] animate-bounce">❤️</div>
+                <div className="absolute -top-2 -right-2 bg-white text-rose-500 px-6 py-2 rounded-full font-black text-2xl shadow-[0_10px_30px_rgba(0,0,0,0.3)] border-2 border-rose-100">
                   +{incomingHearts.count}
                 </div>
-                <p className="text-center font-bold text-xl mt-4 drop-shadow-lg">
-                  {partner?.name || 'Партнер'} шлет любовь!
-                </p>
+                <div className="bg-zinc-900/80 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 mt-8 shadow-2xl">
+                  <p className="text-center font-black text-white text-lg tracking-tight">
+                    {partner?.name || 'Партнер'} шлет любовь!
+                  </p>
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* 1. Atmosphere Widget */}
-        <AtmosphereWidget
-          index={atmosphereIndex}
-          onClick={() => setIsAtmosphereOpen(true)}
-        />
+        <div className="px-1">
+          <AtmosphereWidget
+            index={atmosphereIndex}
+            onClick={() => setIsAtmosphereOpen(true)}
+          />
+        </div>
 
         {/* 2. Interactive Heart */}
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center py-4">
           <HeartComponent onSend={handleSendHearts} />
         </div>
 
         {/* 3. Status Tags */}
-        <StatusTags
-          currentTag={profile?.statusTag}
-          onSelect={handleUpdateStatus}
-        />
+        <div className="px-1">
+          <StatusTags
+            currentTag={profile?.statusTag}
+            onSelect={handleUpdateStatus}
+          />
+        </div>
 
         {/* 4. My State Sliders */}
-        <div className="relative z-0">
+        <div className="px-1">
           <EmotionSliders
             initialState={profile?.emotions}
             onSave={handleUpdateEmotions}
@@ -329,68 +356,77 @@ export default function EmotionsPage() {
         </div>
 
         {/* 5. Partner State */}
-        {partner ? (
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 px-1">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Партнер на связи</span>
+        <div className="px-1 pt-4">
+          {partner ? (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2 px-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Партнер на связи</span>
+              </div>
+              <EmotionSliders
+                title={`Как там ${partner.name}?`}
+                initialState={partner.emotions}
+                onSave={() => {}}
+                disabled={true}
+                lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
+              />
             </div>
-            <EmotionSliders
-              title={`Статус ${partner.name}`}
-              initialState={partner.emotions}
-              onSave={() => {}}
-              disabled={true}
-              lastUpdated={partner.emotions?.updatedAt ? `Обновлено ${formatDistanceToNow(partner.emotions.updatedAt.toDate(), { addSuffix: true, locale: ru })}` : undefined}
-            />
-          </div>
-        ) : (
-          <div className="p-8 border border-dashed border-border rounded-2xl flex flex-col items-center justify-center text-center space-y-2 opacity-50">
-            <Info size={24} className="text-muted-foreground" />
-            <p className="text-sm font-medium">Партнер еще не подключен или не установил статус</p>
-          </div>
-        )}
+          ) : (
+            <div className="p-10 border border-dashed border-zinc-800 rounded-[2.5rem] bg-zinc-900/20 flex flex-col items-center justify-center text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center">
+                <Info size={20} className="text-zinc-600" />
+              </div>
+              <p className="text-sm font-medium text-zinc-500">Партнер еще не подключен<br/>или не установил статус</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Atmosphere Sheet/Modal Placeholder */}
       <AnimatePresence>
         {isAtmosphereOpen && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-md">
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="w-full max-w-xl bg-card rounded-t-[32px] p-8 space-y-8 max-h-[80vh] overflow-y-auto border-t border-border"
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="w-full max-w-xl bg-zinc-900 rounded-t-[3rem] p-8 pb-12 space-y-8 max-h-[85vh] overflow-y-auto border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]"
             >
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-black">Динамика атмосферы</h2>
+                <h2 className="text-2xl font-black tracking-tight">Динамика атмосферы</h2>
                 <button
                   onClick={() => setIsAtmosphereOpen(false)}
-                  className="p-2 bg-secondary rounded-full"
+                  className="p-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-full transition-colors"
                 >
-                  <ChevronLeft size={24} className="rotate-270" />
+                  <ChevronLeft size={24} className="rotate-[270deg]" />
                 </button>
               </div>
 
-              <div className="p-12 border-2 border-dashed border-border rounded-3xl flex flex-col items-center text-center space-y-4">
-                <TrendingUp size={48} className="text-muted-foreground opacity-20" />
-                <p className="text-muted-foreground font-medium">
+              <div className="p-12 border-2 border-dashed border-zinc-800 rounded-[2.5rem] bg-zinc-950/50 flex flex-col items-center text-center space-y-4">
+                <div className="w-16 h-16 rounded-full bg-zinc-900 flex items-center justify-center">
+                  <TrendingUp size={32} className="text-zinc-700" />
+                </div>
+                <p className="text-zinc-500 font-bold text-sm leading-relaxed max-w-[240px]">
                   Здесь будет отображаться график изменения индекса за неделю.
-                  Функционал в разработке.
+                  <br/><span className="opacity-50">Функционал в разработке.</span>
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Как это работает?</h3>
-                <div className="grid gap-3">
+              <div className="space-y-5">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 ml-2">Как это работает?</h3>
+                <div className="grid gap-4">
                   {[
                     'Мы анализируем настроение, энергию, сон и уровень стресса.',
                     'Стресс инвертируется в "спокойствие" для баланса формулы.',
                     'Берется среднее значение показателей обоих партнеров.',
                     'Обновляйте статус ежедневно для точности!'
                   ].map((text, i) => (
-                    <div key={i} className="flex items-start space-x-3 p-3 rounded-xl bg-secondary/30">
-                      <div className="mt-1"><Info size={16} className="text-primary" /></div>
-                      <p className="text-sm font-medium">{text}</p>
+                    <div key={i} className="flex items-start space-x-4 p-5 rounded-[2rem] bg-zinc-950 border border-white/5 shadow-xl">
+                      <div className="mt-0.5 p-1.5 bg-zinc-900 rounded-lg">
+                        <Info size={16} className="text-rose-500" />
+                      </div>
+                      <p className="text-sm font-bold text-zinc-300 leading-snug">{text}</p>
                     </div>
                   ))}
                 </div>
