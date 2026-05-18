@@ -15,25 +15,6 @@
  * 2. families
  *    - Collection: `families`
  *    - Document ID: auto-generated or custom unique string
- *    - Fields:
- *      - id: string
- *      - name: string (e.g., "Family Name")
- *      - code: string (unique 6-digit code for joining)
- *      - createdAt: timestamp
- *      - creatorId: string (uid of the user who created it)
- * 
- * 3. shoppingList
- *    - Collection: `shoppingList`
- *    - Document ID: auto-generated
- *    - Fields:
- *      - id: string
- *      - title: string
- *      - completed: boolean
- *      - familyId: string (scoped to family)
- *      - createdBy: string (uid)
- *      - createdAt: timestamp
- *      - shopId: string (e.g., 'plan', 'magnit', 'lenta', etc.)
- *      - priority: 'normal' | 'urgent'
  */
 
 export interface UserProfile {
@@ -46,6 +27,14 @@ export interface UserProfile {
   createdAt: any;
   emotions?: EmotionState;
   statusTag?: StatusTag;
+  nutrientGoals?: NutrientGoals;
+}
+
+export interface NutrientGoals {
+  calories: number;
+  proteins: number;
+  fats: number;
+  carbs: number;
 }
 
 export interface EmotionState {
@@ -83,6 +72,7 @@ export interface Family {
   code: string;
   createdAt: any;
   creatorId: string;
+  currency?: number; // Shared family coins
   inShop?: {
     [uid: string]: {
       userName: string;
@@ -106,7 +96,74 @@ export interface ShoppingItem {
   link?: string;
   isOrdered?: boolean;
   quantity?: number;
-  unit?: 'шт.' | 'кг' | 'л' | 'упак.' | 'г' | 'мл';
+  unit?: string;
+  metadata?: {
+    source?: string; // e.g., "из меню: Обед"
+    recipeId?: string;
+  }
+}
+
+export interface Recipe {
+  id: string;
+  title: string;
+  category: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  calories: number;
+  proteins: number;
+  fats: number;
+  carbs: number;
+  link?: string;
+  comment?: string;
+  ingredients: RecipeIngredient[];
+  familyId: string;
+  createdBy: string;
+  createdAt: any;
+}
+
+export interface RecipeIngredient {
+  name: string;
+  amount: number;
+  unit: string;
+}
+
+export interface MealPlan {
+  id: string;
+  date: string; // YYYY-MM-DD
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  recipeId: string;
+  recipeTitle: string;
+  familyId: string;
+  nutrients: {
+    calories: number;
+    proteins: number;
+    fats: number;
+    carbs: number;
+  };
+  ingredients: {
+    name: string;
+    amount: number;
+    unit: string;
+    haveAtHome: boolean;
+  }[];
+}
+
+export interface Tamagotchi {
+  familyId: string;
+  level: number;
+  xp: number;
+  satiety: number;   // 0-100
+  happiness: number; // 0-100
+  energy: number;    // 0-100
+  stage: 'egg' | 'kitten' | 'junior' | 'adult';
+  items: string[];   // Purchased item IDs
+  lastChecked: any;  // Timestamp
+}
+
+export interface TamagotchiItem {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
+  category: 'hat' | 'decor' | 'furniture';
 }
 
 export interface WishlistItem {
@@ -115,7 +172,7 @@ export interface WishlistItem {
   price?: number;
   isMaterial: boolean;
   familyId: string;
-  ownerId: string; // The person whose wish it is
+  ownerId: string;
   createdAt: any;
   isCompleted: boolean;
 }
@@ -123,7 +180,7 @@ export interface WishlistItem {
 export interface Task {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   matrix: 'urgent-important' | 'urgent-unimportant' | 'unurgent-important' | 'unurgent-unimportant';
   familyId: string;
   createdBy: string;
@@ -159,7 +216,7 @@ export interface SavingsGoal {
   name: string;
   targetAmount: number;
   currentAmount: number;
-  wishlistId?: string; // Optional link to a wish
+  wishlistId?: string;
   familyId: string;
 }
 
@@ -170,7 +227,7 @@ export interface Loan {
   totalAmount: number;
   remainingAmount: number;
   monthlyPayment: number;
-  paymentDate: number; // Day of month (1-31)
+  paymentDate: number;
   interestRate?: number;
   paymentType?: 'annuity' | 'differentiated';
   startDate?: any;
@@ -180,7 +237,7 @@ export interface Loan {
 export interface CalendarEvent {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   type: 'personal' | 'holiday' | 'birthday';
   familyId: string;
   userId?: string;

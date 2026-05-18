@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import admin from 'firebase-admin';
 import '@/lib/firebase-admin'; // Ensure admin is initialized
+import { boostTamagotchi } from '@/lib/tamagotchi-admin';
 
 const db = admin.apps.length ? admin.firestore() : null;
 
@@ -57,6 +58,19 @@ export async function POST(req: NextRequest) {
     });
 
     await batch.commit();
+
+    // Boost Tamagotchi Happiness
+    (async () => {
+      try {
+        const userDoc = await db.doc(`users/${senderId}`).get();
+        const familyId = userDoc.data()?.familyId;
+        if (familyId) {
+          await boostTamagotchi(familyId, 'happiness', 5);
+        }
+      } catch (err) {
+        console.warn('Tama boost error:', err);
+      }
+    })();
 
     // Background notification
     (async () => {

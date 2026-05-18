@@ -32,6 +32,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Family } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
+import TamagotchiWidget from '@/components/tamagotchi/TamagotchiWidget';
 
 export default function Dashboard() {
   const { user, profile, loading } = useAuth();
@@ -91,9 +92,12 @@ export default function Dashboard() {
       </AnimatePresence>
 
       <header className="flex justify-between items-center mb-8 pt-4">
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold">FamilyHub</h1>
           <p className="text-muted-foreground">Привет, {profile.name}!</p>
+        </div>
+        <div className="mr-4">
+          <TamagotchiWidget />
         </div>
         <div className="flex gap-2">
           <button 
