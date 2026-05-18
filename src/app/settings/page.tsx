@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Copy, Check, Users, Settings as SettingsIcon } from 'lucide-react';
+import { ChevronLeft, Copy, Check, Users, Settings as SettingsIcon, Moon, Sun } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Family } from '@/lib/types';
@@ -13,7 +13,13 @@ export default function SettingsPage() {
   const { user, profile, loading } = useAuth();
   const [family, setFamily] = useState<Family | null>(null);
   const [copied, setCopied] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const router = useRouter();
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' || 'dark';
+    setTheme(savedTheme);
+  }, []);
 
   useEffect(() => {
     const fetchFamily = async () => {
@@ -36,6 +42,17 @@ export default function SettingsPage() {
       navigator.clipboard.writeText(family.code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   };
 
@@ -84,7 +101,20 @@ export default function SettingsPage() {
 
         <section className="space-y-3">
           <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider ml-2">Приложение</h2>
-          <div className="bg-card rounded-3xl border border-border overflow-hidden">
+          <div className="bg-card rounded-3xl border border-border overflow-hidden divide-y divide-border">
+            <button
+              onClick={toggleTheme}
+              className="w-full p-4 flex items-center justify-between hover:bg-secondary/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                {theme === 'dark' ? <Moon size={20} className="text-muted-foreground" /> : <Sun size={20} className="text-muted-foreground" />}
+                <span className="font-medium text-left">Темная тема</span>
+              </div>
+              <div className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-primary' : 'bg-zinc-700'}`}>
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${theme === 'dark' ? 'right-1' : 'left-1'}`} />
+              </div>
+            </button>
+
             <div className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <SettingsIcon size={20} className="text-muted-foreground" />
