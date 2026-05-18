@@ -163,35 +163,37 @@ export default function HeartComponent({ onSend }: HeartComponentProps) {
             viewBox="0 0 24 24"
             className="text-zinc-900 drop-shadow-2xl fill-current stroke-zinc-800 stroke-[0.5px]"
           >
+            <defs>
+              <clipPath id="heartClip">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+              </clipPath>
+            </defs>
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
 
-          {/* Liquid Fill Heart */}
+          {/* Liquid Fill Heart Container with ClipPath */}
           <div
-            className="absolute inset-0 overflow-hidden"
+            className="absolute inset-0"
             style={{
-              clipPath: `inset(${100 - fillPercentage}% 0 0 0)`,
-              transition: 'clip-path 0.2s ease-out'
+              clipPath: 'url(#heartClip)',
             }}
           >
-            <svg
-              width="180"
-              height="180"
-              viewBox="0 0 24 24"
-              className="text-rose-500 fill-current drop-shadow-[0_0_15px_rgba(244,63,94,0.5)]"
+            {/* The filling level control */}
+            <div
+              className="absolute inset-0 transition-transform duration-200 ease-out"
+              style={{ transform: `translateY(${100 - fillPercentage}%)` }}
             >
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-            </svg>
+              <div className="absolute inset-0 bg-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.6)]" />
 
-            {/* Liquid Surface Effect */}
-            {fillPercentage > 0 && fillPercentage < 100 && (
-              <motion.div
-                animate={{ x: [-10, 10] }}
-                transition={{ duration: 1, repeat: Infinity, repeatType: "reverse" }}
-                className="absolute w-[200%] h-4 bg-rose-400/30 blur-md"
-                style={{ top: `${100 - fillPercentage}%`, left: '-50%' }}
-              />
-            )}
+              {/* Liquid Surface Effect */}
+              {fillPercentage > 0 && fillPercentage < 100 && (
+                <motion.div
+                  animate={{ x: [-10, 10] }}
+                  transition={{ duration: 1, repeat: Infinity, repeatType: "reverse" }}
+                  className="absolute top-0 left-[-50%] w-[200%] h-6 bg-rose-400 blur-md opacity-60 -translate-y-1/2"
+                />
+              )}
+            </div>
           </div>
         </motion.div>
       </motion.div>
