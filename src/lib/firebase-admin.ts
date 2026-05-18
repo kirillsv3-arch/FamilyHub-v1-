@@ -22,7 +22,7 @@ if (!admin.apps.length) {
   }
 }
 
-export async function sendPushNotification(token: string, title: string, body: string, data?: any) {
+export async function sendPushNotification(token: string, title: string, body: string, data?: Record<string, string>) {
   if (!admin.apps.length) {
     console.log('Push skipped: Admin not initialized');
     return;

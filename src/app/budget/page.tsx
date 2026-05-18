@@ -15,7 +15,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Transaction, BudgetCategory, SavingsGoal, Loan, RecurringTemplate } from '@/lib/types';
+import { Transaction, BudgetCategory, SavingsGoal, Loan, RecurringTemplate, WishlistItem } from '@/lib/types';
 import Link from 'next/link';
 import { 
   ChevronLeft, 
@@ -39,8 +39,13 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { BudgetSummaryCards } from '@/components/budget/BudgetSummaryCards';
+import { TransactionList } from '@/components/budget/TransactionList';
+import { AddTransactionForm } from '@/components/budget/AddTransactionForm';
+import { GoalCard } from '@/components/budget/GoalCard';
+import { LoanCard } from '@/components/budget/LoanCard';
 
-const DEFAULT_CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   { 
     id: 'food', name: 'Продукты', icon: '🛒', color: '#3b82f6',
     subcategories: [{id: 'supermarket', name: 'Супермаркет'}, {id: 'delivery', name: 'Доставка'}, {id: 'cafe', name: 'Кафе/Рестораны'}]
@@ -81,7 +86,7 @@ export default function BudgetPage() {
   const [isAddingLoan, setIsAddingLoan] = useState(false);
   const [newTransaction, setNewTransaction] = useState({ amount: '', type: 'expense' as 'income' | 'expense', categoryId: 'food', subcategoryId: '', description: '' });
   const [isImportingFromWishlist, setIsImportingFromWishlist] = useState(false);
-  const [wishlistItems, setWishlistItems] = useState<any[]>([]);
+  const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [isAddingTemplate, setIsAddingTemplate] = useState(false);
   const [newTemplate, setNewTemplate] = useState({ title: '', amount: '', type: 'expense' as 'income' | 'expense', categoryId: 'food', dayOfMonth: '1' });
@@ -106,7 +111,7 @@ export default function BudgetPage() {
     });
 
     const unsubW = onSnapshot(query(collection(db, 'wishlists'), where('familyId', '==', profile.familyId), where('isMaterial', '==', true)), (snap) => {
-      setWishlistItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setWishlistItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as WishlistItem)));
     });
 
     const unsubTempl = onSnapshot(query(collection(db, 'recurringTemplates'), where('familyId', '==', profile.familyId)), (snap) => {
@@ -235,38 +240,11 @@ export default function BudgetPage() {
 
   const renderOverview = () => (
     <div className="space-y-6">
-      <div className="bg-card border border-border p-6 rounded-[32px] shadow-sm">
-        <p className="text-sm font-black text-muted-foreground uppercase tracking-widest mb-1">История трат</p>
-        <div className="space-y-4 mt-4">
-          {filteredTransactions.map(t => {
-            const cat = DEFAULT_CATEGORIES.find(c => c.id === t.categoryId);
-            const subcat = cat?.subcategories.find(s => s.id === t.subcategoryId);
-            return (
-              <div 
-                key={t.id} 
-                onClick={() => setEditingTransaction(t)}
-                className="flex items-center justify-between group cursor-pointer active:scale-95 transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-lg">{cat?.icon || '✨'}</div>
-                  <div>
-                    <p className="font-bold">{t.description || subcat?.name || cat?.name}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase font-black tracking-wider">
-                      {t.userName} • {t.date?.toDate ? format(t.date.toDate(), 'd MMM', { locale: ru }) : ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={cn("font-black", t.type === 'income' ? "text-green-500" : "text-foreground")}>
-                    {t.type === 'income' ? '+' : ''}{t.amount.toLocaleString()} ₽
-                  </p>
-                  {subcat && <p className="text-[8px] font-black uppercase text-muted-foreground">{subcat.name}</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <TransactionList
+        transactions={filteredTransactions}
+        categories={DEFAULT_CATEGORIES}
+        onEdit={setEditingTransaction}
+      />
     </div>
   );
 
@@ -348,30 +326,14 @@ export default function BudgetPage() {
         <span className="font-bold uppercase tracking-widest text-xs">Добавить цель</span>
       </button>
       {goals.map(goal => (
-        <div key={goal.id} className="bg-card border border-border p-6 rounded-[32px] space-y-4">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-green-500/10 text-green-500 rounded-2xl"><PiggyBank size={24} /></div>
-              <div>
-                <h3 className="font-bold text-lg">{goal.name}</h3>
-                <p className="text-xs text-muted-foreground">Накоплено: {goal.currentAmount.toLocaleString()} ₽</p>
-              </div>
-            </div>
-            <p className="font-black text-xl">{goal.targetAmount.toLocaleString()} ₽</p>
-          </div>
-          <div className="h-3 bg-secondary rounded-full overflow-hidden">
-            <div className="h-full bg-green-500" style={{ width: `${(goal.currentAmount / goal.targetAmount) * 100}%` }} />
-          </div>
-          <button 
-            onClick={() => {
-              const amount = prompt("Сколько добавить?");
-              if (amount) updateDoc(doc(db, 'savingsGoals', goal.id), { currentAmount: goal.currentAmount + parseFloat(amount) });
-            }}
-            className="w-full py-3 bg-secondary rounded-2xl font-bold text-sm"
-          >
-            Пополнить
-          </button>
-        </div>
+        <GoalCard
+          key={goal.id}
+          goal={goal}
+          onAddFunds={(id, current) => {
+            const amount = prompt("Сколько добавить?");
+            if (amount) updateDoc(doc(db, 'savingsGoals', id), { currentAmount: current + parseFloat(amount) });
+          }}
+        />
       ))}
     </div>
   );
@@ -385,38 +347,7 @@ export default function BudgetPage() {
         <PlusCircle size={32} />
         <span className="font-bold uppercase tracking-widest text-xs">Добавить кредит</span>
       </button>
-      {loans.map(loan => (
-        <div key={loan.id} className="bg-card border border-border p-6 rounded-[32px] space-y-4">
-           <div className="flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              <div className={cn("p-3 rounded-2xl", loan.type === 'card' ? "bg-orange-500/10 text-orange-500" : "bg-blue-500/10 text-blue-500")}>
-                <CreditCard size={24} />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">{loan.name}</h3>
-                <p className="text-xs text-muted-foreground">{loan.type === 'card' ? 'Кредитная карта' : 'Потреб. кредит'}</p>
-              </div>
-            </div>
-            <div className="text-right">
-               <p className="font-black text-xl">{loan.remainingAmount.toLocaleString()} ₽</p>
-               <p className="text-[10px] text-muted-foreground uppercase font-black">из {loan.totalAmount.toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="flex gap-4">
-            <div className="flex-1 bg-background/50 p-3 rounded-2xl border border-border">
-              <p className="text-[10px] font-black text-muted-foreground uppercase mb-1">Платеж</p>
-              <p className="font-bold">{loan.monthlyPayment.toLocaleString()} ₽</p>
-            </div>
-            <div className="flex-1 bg-background/50 p-3 rounded-2xl border border-border">
-              <p className="text-[10px] font-black text-muted-foreground uppercase mb-1">Дата</p>
-              <div className="flex items-center gap-1">
-                <CalendarIcon size={12} className="text-muted-foreground" />
-                <p className="font-bold">{loan.paymentDate} число</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
+      {loans.map(loan => <LoanCard key={loan.id} loan={loan} />)}
     </div>
   );
 
@@ -437,31 +368,11 @@ export default function BudgetPage() {
         </button>
       </header>
 
-      {/* Balance Block */}
-      <div className="bg-card border border-border p-8 rounded-[40px] shadow-sm mb-6 flex flex-col items-center">
-        <p className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em] mb-2">Общий баланс</p>
-        <h2 className="text-4xl font-black mb-6">{stats.balance.toLocaleString()} ₽</h2>
-        <div className="flex gap-4 w-full">
-          <div className="flex-1 bg-green-500/10 p-4 rounded-3xl border border-green-500/20 flex items-center gap-3">
-            <div className="w-8 h-8 bg-green-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">
-              <TrendingUp size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-green-500 uppercase tracking-widest">Доходы</p>
-              <p className="font-bold">{stats.income.toLocaleString()} ₽</p>
-            </div>
-          </div>
-          <div className="flex-1 bg-red-500/10 p-4 rounded-3xl border border-red-500/20 flex items-center gap-3">
-            <div className="w-8 h-8 bg-red-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-red-500/20">
-              <TrendingDown size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Расходы</p>
-              <p className="font-bold">{stats.expense.toLocaleString()} ₽</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <BudgetSummaryCards
+        balance={stats.balance}
+        income={stats.income}
+        expense={stats.expense}
+      />
 
       {/* Month Slider */}
       <div className="flex items-center justify-between mb-8 px-2">
@@ -542,46 +453,12 @@ export default function BudgetPage() {
             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="fixed inset-x-0 bottom-0 z-50 bg-card rounded-t-[40px] p-8 border-t border-border">
               <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-8" />
               <h2 className="text-2xl font-black mb-6">Новая операция</h2>
-              <form onSubmit={handleAddTransaction} className="space-y-6">
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setNewTransaction({...newTransaction, type: 'expense'})} className={cn("flex-1 p-4 rounded-2xl font-bold border transition-all", newTransaction.type === 'expense' ? "bg-red-500 text-white" : "bg-background border-border")}>Расход</button>
-                  <button type="button" onClick={() => setNewTransaction({...newTransaction, type: 'income'})} className={cn("flex-1 p-4 rounded-2xl font-bold border transition-all", newTransaction.type === 'income' ? "bg-green-500 text-white" : "bg-background border-border")}>Доход</button>
-                </div>
-                <div className="relative">
-                  <input autoFocus type="number" value={newTransaction.amount} onChange={(e) => setNewTransaction({...newTransaction, amount: e.target.value})} placeholder="0.00" className="w-full p-5 rounded-2xl bg-background border border-border focus:outline-none focus:ring-4 focus:ring-primary/20 text-4xl font-black text-center" />
-                  <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl font-bold opacity-30">₽</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {DEFAULT_CATEGORIES.map(cat => (
-                    <button key={cat.id} type="button" onClick={() => setNewTransaction({...newTransaction, categoryId: cat.id, subcategoryId: ''})} className={cn("p-3 rounded-2xl border text-center transition-all", newTransaction.categoryId === cat.id ? "bg-primary text-white border-transparent" : "bg-background border-border")}>
-                      <p className="text-lg">{cat.icon}</p>
-                      <p className="text-[8px] font-black uppercase">{cat.name}</p>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Подкатегория</p>
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                    {DEFAULT_CATEGORIES.find(c => c.id === newTransaction.categoryId)?.subcategories.map(s => (
-                      <button 
-                        key={s.id} 
-                        type="button" 
-                        onClick={() => setNewTransaction({...newTransaction, subcategoryId: s.id})}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold border whitespace-nowrap transition-all",
-                          newTransaction.subcategoryId === s.id ? "bg-primary text-white border-transparent" : "bg-background border-border text-muted-foreground"
-                        )}
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <input type="text" value={newTransaction.description} onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})} placeholder="Описание (необязательно)" className="w-full p-4 rounded-2xl bg-background border border-border font-bold" />
-                <button type="submit" className="w-full p-5 bg-primary text-white rounded-2xl font-black text-lg shadow-xl shadow-primary/20">Добавить</button>
-              </form>
+              <AddTransactionForm
+                newTransaction={newTransaction}
+                setNewTransaction={setNewTransaction}
+                categories={DEFAULT_CATEGORIES}
+                onSubmit={handleAddTransaction}
+              />
             </motion.div>
           </>
         )}

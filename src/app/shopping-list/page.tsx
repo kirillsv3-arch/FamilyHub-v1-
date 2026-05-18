@@ -44,6 +44,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useLongPress } from 'use-long-press';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ShoppingItem as ShoppingItemCard } from '@/components/shopping-list/ShoppingItem';
+import { AddItemForm } from '@/components/shopping-list/AddItemForm';
+import { ShopGroup } from '@/components/shopping-list/ShopGroup';
 
 const UNITS = ['шт.', 'кг', 'л', 'упак.', 'г', 'мл'] as const;
 
@@ -468,106 +471,17 @@ export default function ShoppingListPage() {
           </button>
         )}
 
-        <AnimatePresence mode="popLayout">
-          {filteredItems.map((item) => {
-            const itemShop = SHOPS.find(s => s.id === item.shopId);
-            return (
-              <motion.div
-                layout
-                key={item.id}
-                {...bindLongPress(item)}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                onClick={() => {
-                  if (activeTab === 'plan') setEditingItem(item);
-                  else {
-                    triggerVibrate(40);
-                    toggleComplete(item);
-                  }
-                }}
-                className={cn(
-                  "flex items-center p-4 rounded-3xl border transition-all cursor-pointer select-none",
-                  item.completed 
-                    ? 'bg-secondary/20 border-transparent opacity-50' 
-                    : 'bg-card border-border shadow-sm active:scale-[0.98]'
-                )}
-              >
-                <div 
-                  className={cn(
-                    "mr-4 flex-shrink-0 transition-colors",
-                    item.completed ? "text-muted-foreground" : (itemShop?.text || "text-primary")
-                  )}
-                  onClick={(e) => {
-                    if (activeTab === 'plan') return;
-                    e.stopPropagation();
-                    toggleComplete(item);
-                  }}
-                >
-                  {item.completed ? <CheckCircle2 size={26} /> : <Circle size={26} />}
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className={cn("flex items-center gap-2", item.completed ? "line-through text-muted-foreground" : "")}>
-                    <p className="font-bold text-lg leading-tight truncate">
-                      {item.title}
-                    </p>
-                    <span className="text-sm opacity-60">
-                      {item.quantity} {item.unit}
-                    </span>
-                    {item.price && <span className="text-sm font-black text-primary">{item.price} ₽</span>}
-                    {item.priority === 'urgent' && !item.completed && (
-                      <span className="flex-shrink-0 w-2 h-2 rounded-full bg-destructive animate-pulse" />
-                    )}
-                    {item.isOrdered && activeTab === 'market' && (
-                       <span className="text-[8px] font-black uppercase bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded">Заказано</span>
-                    )}
-                    {usersInShop.some(([uid, d]) => d.shopId === item.shopId) && (
-                       <div className="w-2 h-2 rounded-full bg-primary animate-pulse" title="Кто-то в этом магазине" />
-                    )}
-                  </div>
-                  {activeTab === 'plan' && itemShop && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={cn("text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border", itemShop.text, "border-current opacity-70")}>
-                        {itemShop.emoji} {itemShop.name}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {activeTab === 'market' && item.link && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); window.open(item.link, '_blank'); }}
-                    className="p-2 text-primary"
-                  >
-                    <ExternalLink size={20} />
-                  </button>
-                )}
-
-                {activeTab === 'plan' && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteItem(item.id);
-                    }}
-                    className="p-2 text-muted-foreground hover:text-destructive opacity-40 hover:opacity-100 transition-all"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                )}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-
-        {filteredItems.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center opacity-30 grayscale">
-            <Package size={64} className="mb-4" />
-            <p className="font-bold text-xl">Тут пока пусто</p>
-            <p className="text-sm">Нажмите +, чтобы добавить товары</p>
-          </div>
-        )}
+        <ShopGroup
+          items={filteredItems}
+          shops={SHOPS}
+          activeTab={activeTab}
+          usersInShop={usersInShop}
+          onToggleComplete={toggleComplete}
+          onDeleteItem={handleDeleteItem}
+          onEditItem={setEditingItem}
+          bindLongPress={bindLongPress}
+          triggerVibrate={triggerVibrate}
+        />
       </div>
 
       {/* Add Item Sheet */}
@@ -590,117 +504,14 @@ export default function ShoppingListPage() {
             >
               <div className="w-12 h-1.5 bg-muted rounded-full mx-auto mb-8" />
               <h2 className="text-2xl font-black mb-6">Что добавим?</h2>
-              <form onSubmit={handleAddItem} className="space-y-6">
-                <div className="space-y-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newItem.title}
-                    onChange={(e) => setNewItem({...newItem, title: e.target.value})}
-                    placeholder="Название товара..."
-                    className="w-full p-5 rounded-2xl bg-background border border-border focus:outline-none focus:ring-4 focus:ring-primary/20 text-xl font-bold transition-all"
-                  />
-                  {newItem.title.length > 0 && suggestions.filter(s => s.toLowerCase().includes(newItem.title.toLowerCase()) && s !== newItem.title).length > 0 && (
-                    <div className="flex flex-wrap gap-2 px-1">
-                      {suggestions
-                        .filter(s => s.toLowerCase().includes(newItem.title.toLowerCase()) && s !== newItem.title)
-                        .slice(0, 3)
-                        .map(suggestion => (
-                          <button
-                            key={suggestion}
-                            type="button"
-                            onClick={() => setNewItem({...newItem, title: suggestion})}
-                            className="text-xs bg-secondary px-3 py-1.5 rounded-full font-medium"
-                          >
-                            {suggestion}
-                          </button>
-                        ))
-                      }
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex items-center gap-4 px-1">
-                   <button
-                    type="button"
-                    onClick={() => setNewItem({...newItem, priority: (newItem.priority === 'urgent' ? 'normal' : 'urgent') as 'normal' | 'urgent'})}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border",
-                      newItem.priority === 'urgent' 
-                        ? "bg-destructive/10 border-destructive text-destructive" 
-                        : "bg-background border-border text-muted-foreground"
-                    )}
-                  >
-                    <Zap size={16} fill={newItem.priority === 'urgent' ? "currentColor" : "none"} />
-                    Срочно
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Кол-во</p>
-                    <input 
-                      type="number" 
-                      value={newItem.quantity} 
-                      onChange={(e) => setNewItem({...newItem, quantity: e.target.value})}
-                      className="w-full p-4 rounded-xl bg-background border border-border font-bold" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ед. изм.</p>
-                    <select 
-                      value={newItem.unit} 
-                      onChange={(e) => setNewItem({...newItem, unit: e.target.value as any})}
-                      className="w-full p-4 rounded-xl bg-background border border-border font-bold appearance-none"
-                    >
-                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {newItem.shopId === 'market' && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
-                    <input 
-                      type="text" 
-                      value={newItem.link} 
-                      onChange={(e) => setNewItem({...newItem, link: e.target.value})}
-                      placeholder="https://..."
-                      className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <p className="text-sm font-black text-muted-foreground uppercase tracking-widest ml-1">Где купить?</p>
-                  <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
-                    {SHOPS.map(shop => (
-                      <button
-                        key={shop.id}
-                        type="button"
-                        onClick={() => setNewItem({...newItem, shopId: shop.id})}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-sm font-bold border transition-all whitespace-nowrap",
-                          newItem.shopId === shop.id 
-                            ? `${shop.color} border-transparent text-white` 
-                            : "bg-background border-border text-muted-foreground"
-                        )}
-                      >
-                        {shop.emoji} {shop.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 p-5 bg-primary text-primary-foreground rounded-2xl font-black text-lg shadow-xl shadow-primary/20 active:scale-95 transition-all"
-                  >
-                    Добавить
-                  </button>
-                </div>
-              </form>
+              <AddItemForm
+                item={newItem}
+                setItem={setNewItem}
+                shops={SHOPS}
+                suggestions={suggestions}
+                onSubmit={handleAddItem}
+                submitLabel="Добавить"
+              />
             </motion.div>
           </>
         )}
@@ -737,99 +548,19 @@ export default function ShoppingListPage() {
                   <Trash2 size={24} />
                 </button>
               </div>
-              <form onSubmit={handleEditItem} className="space-y-6">
+              <div className="space-y-6">
                 {profile?.familyId && (
                   <PriceChart itemName={editingItem.title} familyId={profile.familyId} />
                 )}
-                <input
-                  autoFocus
-                  type="text"
-                  value={editingItem.title}
-                  onChange={(e) => setEditingItem({...editingItem, title: e.target.value})}
-                  className="w-full p-5 rounded-2xl bg-background border border-border focus:outline-none focus:ring-4 focus:ring-primary/20 text-xl font-bold transition-all"
+                <AddItemForm
+                  item={editingItem}
+                  setItem={setEditingItem}
+                  shops={SHOPS}
+                  suggestions={suggestions}
+                  onSubmit={handleEditItem}
+                  submitLabel="Сохранить"
                 />
-                
-                <div className="flex items-center gap-4 px-1">
-                   <button
-                    type="button"
-                    onClick={() => editingItem && setEditingItem({...editingItem, priority: (editingItem.priority === 'urgent' ? 'normal' : 'urgent') as 'normal' | 'urgent'})}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border",
-                      editingItem.priority === 'urgent' 
-                        ? "bg-destructive/10 border-destructive text-destructive" 
-                        : "bg-background border-border text-muted-foreground"
-                    )}
-                  >
-                    <Zap size={16} fill={editingItem.priority === 'urgent' ? "currentColor" : "none"} />
-                    Срочно
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Кол-во</p>
-                    <input 
-                      type="number" 
-                      value={editingItem.quantity || ''} 
-                      onChange={(e) => setEditingItem({...editingItem, quantity: parseFloat(e.target.value)})}
-                      className="w-full p-4 rounded-xl bg-background border border-border font-bold" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ед. изм.</p>
-                    <select 
-                      value={editingItem.unit || 'шт.'} 
-                      onChange={(e) => setEditingItem({...editingItem, unit: e.target.value as any})}
-                      className="w-full p-4 rounded-xl bg-background border border-border font-bold appearance-none"
-                    >
-                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {editingItem.shopId === 'market' && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Ссылка</p>
-                    <input 
-                      type="text" 
-                      value={editingItem.link || ''} 
-                      onChange={(e) => setEditingItem({...editingItem, link: e.target.value})}
-                      placeholder="https://..."
-                      className="w-full p-4 rounded-xl bg-background border border-border text-sm font-bold"
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <p className="text-sm font-black text-muted-foreground uppercase tracking-widest ml-1">Магазин</p>
-                  <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
-                    {SHOPS.map(shop => (
-                      <button
-                        key={shop.id}
-                        type="button"
-                        onClick={() => setEditingItem({...editingItem, shopId: shop.id})}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-sm font-bold border transition-all whitespace-nowrap",
-                          editingItem.shopId === shop.id 
-                            ? `${shop.color} border-transparent text-white` 
-                            : "bg-background border-border text-muted-foreground"
-                        )}
-                      >
-                        {shop.emoji} {shop.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 p-5 bg-secondary text-secondary-foreground rounded-2xl font-black text-lg active:scale-95 transition-all"
-                  >
-                    Сохранить
-                  </button>
-                </div>
-              </form>
+              </div>
             </motion.div>
           </>
         )}
