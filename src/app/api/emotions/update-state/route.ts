@@ -45,17 +45,15 @@ export async function POST(req: NextRequest) {
     await userRef.set(updateData, { merge: true });
 
     // Boost Tamagotchi Happiness on state update
-    (async () => {
-      try {
-        const userDoc = await db.doc(`users/${userId}`).get();
-        const familyId = userDoc.data()?.familyId;
-        if (familyId) {
-          await boostTamagotchi(familyId, 'happiness', 2);
-        }
-      } catch (err) {
-        console.warn('Tama boost error:', err);
+    try {
+      const userDoc = await db.doc(`users/${userId}`).get();
+      const familyId = userDoc.data()?.familyId;
+      if (familyId) {
+        await boostTamagotchi(familyId, 'happiness', 2);
       }
-    })();
+    } catch (err) {
+      console.warn('Tama boost error:', err);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

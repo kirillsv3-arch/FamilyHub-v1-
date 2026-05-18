@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import admin from 'firebase-admin';
 import '@/lib/firebase-admin'; // Ensure admin is initialized
 import { boostTamagotchi } from '@/lib/tamagotchi-admin';
-import { verifyToken } from '@/lib/auth-server';
+import { verifyToken, getUserWithFamily } from '@/lib/auth-server';
 
 const db = admin.apps.length ? admin.firestore() : null;
 
@@ -24,6 +24,17 @@ export async function POST(req: NextRequest) {
     if (!receiverId || !count) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
+
+    const [senderData, receiverData] = await Promise.all([
+      getUserWithFamily(senderId),
+      getUserWithFamily(receiverId),
+    ]);
+
+    if (!senderData?.familyId || senderData.familyId !== receiverData?.familyId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const familyId = senderData.familyId;
 
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     const batch = db.batch();
@@ -49,45 +60,37 @@ export async function POST(req: NextRequest) {
 
     await batch.commit();
 
-    // Boost Tamagotchi Happiness
-    (async () => {
-      try {
-        const userDoc = await db.doc(`users/${senderId}`).get();
-        const familyId = userDoc.data()?.familyId;
-        if (familyId) {
+    // Background operations
+    await Promise.allSettled([
+      // Boost Tamagotchi Happiness
+      (async () => {
+        try {
           await boostTamagotchi(familyId, 'happiness', 5);
+        } catch (err) {
+          console.warn('Tama boost error:', err);
         }
-      } catch (err) {
-        console.warn('Tama boost error:', err);
-      }
-    })();
-
-    // Background notification
-    (async () => {
-      try {
-        const [senderDoc, receiverDoc] = await Promise.all([
-          db.doc(`users/${senderId}`).get(),
-          db.doc(`users/${receiverId}`).get()
-        ]);
-
-        const receiverData = receiverDoc.data();
-        if (receiverData?.fcmToken) {
-          const senderName = senderDoc.exists ? senderDoc.data()?.name : 'Партнер';
-          await admin.messaging().send({
-            token: receiverData.fcmToken,
-            notification: {
-              title: 'Новые сердечки! ❤️',
-              body: `${senderName} отправил(а) вам ${count} сердечек!`
-            },
-            data: { type: 'HEARTS', count: count.toString() },
-            android: { priority: 'high' },
-            apns: { payload: { aps: { contentAvailable: true } } },
-          });
+      })(),
+      // Background notification
+      (async () => {
+        try {
+          if (receiverData?.fcmToken) {
+            const senderName = senderData.name || 'Партнер';
+            await admin.messaging().send({
+              token: receiverData.fcmToken,
+              notification: {
+                title: 'Новые сердечки! ❤️',
+                body: `${senderName} отправил(а) вам ${count} сердечек!`
+              },
+              data: { type: 'HEARTS', count: count.toString() },
+              android: { priority: 'high' },
+              apns: { payload: { aps: { contentAvailable: true } } },
+            });
+          }
+        } catch (err) {
+          console.warn('Background notification error:', err);
         }
-      } catch (err) {
-        console.warn('Background notification error:', err);
-      }
-    })();
+      })()
+    ]);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
